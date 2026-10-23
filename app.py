@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+import requests
 
 # 페이지 설정 (와이드 레이아웃)
 st.set_page_config(page_title="본사 문직 수주/출고 관리 시스템", layout="wide")
@@ -27,7 +28,7 @@ st.markdown("""
 
 # 타이틀 디자인
 st.markdown('<div class="main-header">📦 본사 문직 제품 수주 및 출고 관리 시스템</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">실시간 구글 스프레드시트 연동 및 종합 관리 대시보드</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">실시간 구글 스프레드시트 연동 및 스마트 대시보드</div>', unsafe_allow_html=True)
 
 # 구글 스프레드시트 자동 연동
 SHEET_ID = "13Lp9gA3p8a_WstCQA9AyMrfzM8YTtqUpBV8Ryxzszjg"
@@ -43,14 +44,12 @@ def load_data():
             header_row = i
             break
     df = pd.read_csv(url, header=header_row)
-    # 컬럼명 앞뒤 공백 제거로 에러 방지
     df.columns = df.columns.astype(str).str.strip()
     return df
 
 try:
     df = load_data()
     
-    # 컬럼명을 유연하게 찾기 위한 함수
     def find_col(keywords):
         for col in df.columns:
             for kw in keywords:
@@ -64,22 +63,37 @@ try:
     product_col = find_col(['제품명', 'KOREAN NAME'])
     completed_col = find_col(['출고 완료', '출고완료'])
 
-    # 사이드바 메뉴 및 필터 구성
-    st.sidebar.header("🛠️ 시스템 메뉴")
-    menu = st.sidebar.radio("이동할 메뉴 선택", ["📊 종합 대시보드 & 알림", "✏️ 오더 데이터 직접 편집", "📈 월별 수주 통계"])
+    # --- 사이드바 보안 및 메뉴 설정 ---
+    st.sidebar.header("🔐 보안 및 시스템 메뉴")
     
+    # 관리자 비밀번호 (원하시는 문자로 언제든지 코드를 수정해 바꿀 수 있습니다)
+    ADMIN_PASSWORD = "songwol1234" 
+    
+    input_pw = st.sidebar.text_input("관리자 비밀번호 입력", type="password", placeholder="관리자 전용 기능 해제")
+    is_admin = (input_pw == ADMIN_PASSWORD)
+    
+    if is_admin:
+        st.sidebar.success("🔓 관리자 모드가 활성화되었습니다.")
+        menu = st.sidebar.radio("메뉴 선택", ["📊 종합 대시보드 & 알림", "📱 텔레그램 알림 전송", "📈 월별 수주 통계"])
+    else:
+        if input_pw:
+            st.sidebar.error("❌ 비밀번호가 틀렸습니다. (일반 조회 모드)")
+        else:
+            st.sidebar.info("💡 일반 조회 모드 (검색 및 현황 확인 가능)")
+        menu = st.sidebar.radio("메뉴 선택", ["📊 종합 대시보드 & 알림", "📈 월별 수주 통계"])
+
     # 날짜 데이터 정제
+    today = pd.to_datetime(datetime.today().date())
+    target_date = today + timedelta(days=7)
+    
     if date_col and date_col in df.columns:
         df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
 
     if menu == "📊 종합 대시보드 & 알림":
-        # 요약 지표 카드 (Metrics)
+        # 요약 지표 카드
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric(label="📋 전체 수주 건수", value=f"{len(df):,} 건")
-        
-        today = pd.to_datetime(datetime.today().date())
-        target_date = today + timedelta(days=7)
         
         imminent_count = 0
         if date_col and date_col in df.columns:
@@ -113,9 +127,7 @@ try:
         st.markdown("---")
         st.subheader("🔍 실시간 전체 오더 조회 및 필터링")
         
-        # 검색 및 대리점별 필터 강화
         col_f1, col_f2 = st.columns(2)
-        
         with col_f1:
             search_query = st.text_input("🔍 출하처 또는 제품명 검색", "")
         with col_f2:
@@ -139,19 +151,45 @@ try:
             
         st.dataframe(filtered_df, use_container_width=True)
 
-    elif menu == "✏️ 오더 데이터 직접 편집":
-        st.subheader("✏️ 웹 화면 직접 편집기 (Data Editor)")
-        st.info("💡 표 안의 셀을 더블클릭하여 내용을 자유롭게 수정하거나 새로운 행을 추가할 수 있습니다. 수정한 후 아래 다운로드 버튼을 눌러 구글 시트에 반영하세요.")
+    elif menu == "📱 텔레그램 알림 전송" and is_admin:
+        st.subheader("📱 텔레그램 납기 임박 알림 전송 설정")
+        st.info("💡 텔레그램 봇 토큰과 채팅 ID를 입력하고 버튼을 누르면, 현재 납기가 임박한 오더 목록이 스마트폰 텔레그램 메신저로 즉시 전송됩니다.")
         
-        edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True)
-        
-        csv_data = edited_df.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label="📥 수정된 데이터 파일 다운로드 (구글 시트 업로드용)",
-            data=csv_data,
-            file_name="HQ_본사_문직_수주_출고_수정본.csv",
-            mime="text/csv",
-        )
+        with st.form("telegram_form"):
+            bot_token = st.text_input("🤖 텔레그램 Bot Token", type="password", placeholder="예: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ")
+            chat_id = st.text_input("👤 텔레그램 Chat ID", placeholder="예: 987654321")
+            submit_btn = st.form_submit_button("🚀 납기 임박 리스트 텔레그램으로 전송하기")
+            
+            if submit_btn:
+                if not bot_token or not chat_id:
+                    st.error("Bot Token과 Chat ID를 모두 입력해주세요.")
+                else:
+                    try:
+                        if date_col and date_col in df.columns:
+                            imminent_df = df[(df[date_col] >= today) & (df[date_col] <= today + timedelta(days=7))]
+                        else:
+                            imminent_df = pd.DataFrame()
+                            
+                        if imminent_df.empty:
+                            msg = "🎉 [본사 수주 알림] 향후 7일 이내 납기가 임박한 제품이 없습니다."
+                        else:
+                            msg = f"🚨 [본사 수주 알림] 7일 이내 납기 임박 제품 ({len(imminent_df)}건):\n\n"
+                            for idx, row in imminent_df.iterrows():
+                                s = row.get(ship_col, '출하처 없음')
+                                p = row.get(product_col, '제품명 없음')
+                                d = str(row.get(date_col, ''))[:10]
+                                msg += f"• 출하처: {s}\n  제품: {p}\n  납기: {d}\n\n"
+                        
+                        tg_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                        payload = {"chat_id": chat_id, "text": msg}
+                        res = requests.post(tg_url, json=payload)
+                        
+                        if res.status_code == 200:
+                            st.success("✅ 텔레그램 알림이 성공적으로 전송되었습니다!")
+                        else:
+                            st.error(f"❌ 전송 실패 (오류 코드: {res.status_code}) - 토큰과 Chat ID를 확인해주세요.")
+                    except Exception as ex:
+                        st.error(f"전송 중 오류 발생: {ex}")
 
     elif menu == "📈 월별 수주 통계":
         st.subheader("📈 월별 발주서 수령 현황 분석")
