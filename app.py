@@ -29,7 +29,7 @@ st.markdown("""
 
 # 타이틀 디자인
 st.markdown('<div class="main-header">📦 본사 문직 제품 수주 및 출고 관리 시스템</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">실시간 구글 스프레드시트 연동 및 스마트 대시보드 (UPGRADE VERSION)</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">실시간 구글 스프레드시트 연동 및 스마트 SCM 대시보드 (ULTIMATE EDITION)</div>', unsafe_allow_html=True)
 
 # 구글 스프레드시트 자동 연동
 SHEET_ID = "13Lp9gA3p8a_WstCQA9AyMrfzM8YTtqUpBV8Ryxzszjg"
@@ -64,6 +64,10 @@ try:
     product_col = find_col(['제품명', 'KOREAN NAME'])
     completed_col = find_col(['출고 완료', '출고완료'])
 
+    # 세션 상태에 메모 저장소 초기화 (실무자 메모 기능용)
+    if 'order_memos' not in st.session_state:
+        st.session_state.order_memos = {}
+
     # --- 사이드바 보안 및 메뉴 설정 ---
     st.sidebar.header("🔐 보안 및 시스템 메뉴")
     
@@ -74,13 +78,22 @@ try:
     
     if is_admin:
         st.sidebar.success("🔓 관리자 모드가 활성화되었습니다.")
-        menu = st.sidebar.radio("메뉴 선택", ["📊 종합 대시보드 & 일정별 알림", "💬 팀즈 알림 전송", "📈 월별 수주 통계"])
+        menu = st.sidebar.radio("메뉴 선택", [
+            "📊 종합 대시보드 & 일정별 알림", 
+            "📈 통계 및 거래처 분석", 
+            "📝 실무자 메모 및 특이사항", 
+            "💬 팀즈 알림 전송"
+        ])
     else:
         if input_pw:
             st.sidebar.error("❌ 비밀번호가 틀렸습니다. (일반 조회 모드)")
         else:
             st.sidebar.info("💡 일반 조회 모드 (검색 및 현황 확인 가능)")
-        menu = st.sidebar.radio("메뉴 선택", ["📊 종합 대시보드 & 일정별 알림", "📈 월별 수주 통계"])
+        menu = st.sidebar.radio("메뉴 선택", [
+            "📊 종합 대시보드 & 일정별 알림", 
+            "📈 통계 및 거래처 분석", 
+            "📝 실무자 메모 및 특이사항"
+        ])
 
     today = pd.to_datetime(datetime.today().date())
     
@@ -92,7 +105,6 @@ try:
         target_d30 = today + timedelta(days=30)
         target_d60 = today + timedelta(days=60)
 
-        # 1. 요약 지표 카드 및 출고 완료율 게이지 바 추가
         total_len = len(df)
         completed_count = 0
         if completed_col and completed_col in df.columns:
@@ -116,13 +128,11 @@ try:
         with col4:
             st.metric(label="🗓️ 2달 후(60일) 예정", value=f"{imminent_d60} 건")
 
-        # 전체 출고 완료율 프로그레스 바 표시
         st.markdown(f"**🎯 전체 출고 달성률: {completion_rate}% ({completed_count}건 / 총 {total_len}건 완료)**")
         st.progress(completion_rate / 100.0)
             
         st.markdown("---")
         
-        # 2. 접이식 박스(Expander)를 적용한 기간별 출고 예정 리스트
         with st.expander(f"🚨 [긴급] 7일 이내 납기 임박 오더 ({imminent_d7}건)", expanded=True):
             if date_col and date_col in df.columns:
                 df_d7 = df[(df[date_col] >= today) & (df[date_col] <= target_d7)]
@@ -151,8 +161,6 @@ try:
                     st.info("해당 기간 내 출고 예정인 제품이 없습니다.")
                 
         st.markdown("---")
-        
-        # 3. 실시간 전체 오더 조회 및 엑셀 다운로드 / 날짜 범위 필터 기능 추가
         st.subheader("🔍 실시간 전체 오더 조회 및 필터링")
         
         col_f1, col_f2, col_f3 = st.columns(3)
@@ -169,7 +177,6 @@ try:
         
         filtered_df = df.copy()
         
-        # 검색어 필터
         if search_query:
             cond = pd.Series(False, index=filtered_df.index)
             if ship_col and ship_col in filtered_df.columns:
@@ -178,11 +185,9 @@ try:
                 cond = cond | filtered_df[product_col].astype(str).str.contains(search_query, na=False, case=False)
             filtered_df = filtered_df[cond]
             
-        # 대리점 필터
         if selected_agency != '전체' and agency_col and agency_col in filtered_df.columns:
             filtered_df = filtered_df[filtered_df[agency_col] == selected_agency]
 
-        # 날짜 범위 필터
         if use_date_filter and date_col in filtered_df.columns:
             valid_dates = filtered_df[date_col].dropna()
             if not valid_dates.empty:
@@ -193,12 +198,10 @@ try:
                     start_r, end_r = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
                     filtered_df = filtered_df[(filtered_df[date_col] >= start_r) & (filtered_df[date_col] <= end_r)]
 
-        # 조회 결과 건수 표시 및 엑셀 다운로드 버튼
         col_res1, col_res2 = st.columns([3, 1])
         with col_res1:
             st.write(f"총 **{len(filtered_df):,}건**의 오더가 검색되었습니다.")
         with col_res2:
-            # 엑셀 다운로드 버튼 생성
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 filtered_df.to_excel(writer, index=False, sheet_name='오더조회결과')
@@ -211,6 +214,85 @@ try:
             )
 
         st.dataframe(filtered_df, use_container_width=True)
+
+    elif menu == "📈 통계 및 거래처 분석":
+        st.subheader("📈 대리점별 및 품목별 수주 분석")
+        
+        col_st1, col_st2 = st.columns(2)
+        
+        with col_st1:
+            st.markdown("### 🏢 주요 대리점 주문 건수 Top 10")
+            if agency_col and agency_col in df.columns:
+                agency_counts = df[agency_col].value_counts().head(10)
+                st.bar_chart(agency_counts)
+            else:
+                st.info("대리점 컬럼을 찾을 수 없습니다.")
+
+        with col_st2:
+            st.markdown("### 📦 주요 출하처 주문 건수 Top 10")
+            if ship_col and ship_col in df.columns:
+                ship_counts = df[ship_col].value_counts().head(10)
+                st.bar_chart(ship_counts)
+            else:
+                st.info("출하처 컬럼을 찾을 수 없습니다.")
+
+        st.markdown("---")
+        st.subheader("📈 월별 발주서 수령 현황 분석")
+        date_rcv_col = find_col(['발주서 수령', '발주서'])
+        if date_rcv_col and date_rcv_col in df.columns:
+            df['수령_월'] = pd.to_datetime(df[date_rcv_col], errors='coerce').dt.to_period('M').astype(str)
+            monthly_counts = df['수령_월'].value_counts().sort_index()
+            st.bar_chart(monthly_counts)
+        else:
+            st.info("발주서 수령일 기준 통계를 생성할 수 없습니다.")
+
+    elif menu == "📝 실무자 메모 및 특이사항":
+        st.subheader("📝 오더별 실무자 메모 및 특이사항 관리")
+        st.info("💡 특정 오더에 대한 특이사항(예: 납기 연기 사유, 원단 확인 등)을 기록하고 팀원들과 공유할 수 있습니다.")
+        
+        if ship_col and product_col in df.columns:
+            # 오더 선택용 리스트 생성
+            df['오더표시'] = df.index.astype(str) + " | 출하처: " + df[ship_col].astype(str) + " | 제품: " + df[product_col].astype(str)
+            selected_order_label = st.selectbox("메모를 남길 오더를 선택하세요", df['오더표시'].tolist())
+            
+            selected_idx = int(selected_order_label.split(" | ")[0])
+            row_data = df.loc[selected_idx]
+            
+            st.write("---")
+            st.markdown("#### 선택된 오더 상세 정보")
+            col_m1, col_m2, col_m3 = st.columns(3)
+            with col_m1:
+                st.write(f"**출하처:** {row_data.get(ship_col, '')}")
+            with col_m2:
+                st.write(f"**대리점:** {row_data.get(agency_col, '')}")
+            with col_m3:
+                d_val = str(row_data.get(date_col, ''))[:10]
+                st.write(f"**확정납기 1차:** {d_val}")
+            
+            current_memo = st.session_state.order_memos.get(selected_idx, "")
+            memo_input = st.text_area("✍️ 특이사항 및 메모 입력", value=current_memo, placeholder="예: 원단 입고 지연으로 인해 고객사 협의 완료 (3일 연기)")
+            
+            if st.button("💾 메모 저장하기"):
+                st.session_state.order_memos[selected_idx] = memo_input
+                st.success("✅ 메모가 성공적으로 저장되었습니다!")
+                
+            st.markdown("---")
+            st.markdown("### 📋 현재까지 작성된 전체 메모 목록")
+            if st.session_state.order_memos:
+                memo_list = []
+                for idx, m in st.session_state.order_memos.items():
+                    r = df.loc[idx]
+                    memo_list.append({
+                        "행번호": idx,
+                        "출하처": r.get(ship_col, ''),
+                        "제품명": r.get(product_col, ''),
+                        "작성메모": m
+                    })
+                st.dataframe(pd.DataFrame(memo_list), use_container_width=True)
+            else:
+                st.info("아직 작성된 메모가 없습니다.")
+        else:
+            st.warning("필수 컬럼을 찾을 수 없어 메모 기능을 활성화할 수 없습니다.")
 
     elif menu == "💬 팀즈 알림 전송" and is_admin:
         st.subheader("💬 마이크로소프트 팀즈 납기/출고 일정 알림 전송")
@@ -228,74 +310,4 @@ try:
                         if date_col and date_col in df.columns:
                             df_d7 = df[(df[date_col] >= today) & (df[date_col] <= today + timedelta(days=7))]
                             df_d30 = df[(df[date_col] > today + timedelta(days=7)) & (df[date_col] <= today + timedelta(days=30))]
-                            df_d60 = df[(df[date_col] > today + timedelta(days=30)) & (df[date_col] <= today + timedelta(days=60))]
-                        else:
-                            df_d7, df_d30, df_d60 = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-                            
-                        msg = "📦 [본사 문직 제품 출고 일정 종합 리스트]\n\n"
-                        
-                        msg += f"🚨 [7일 이내 긴급 납기] ({len(df_d7)}건)\n"
-                        if df_d7.empty:
-                            msg += "• 해당 없음\n\n"
-                        else:
-                            for idx, row in df_d7.iterrows():
-                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
-                            msg += "\n"
-
-                        msg += f"📅 [1달 이내 예정] ({len(df_d30)}건)\n"
-                        if df_d30.empty:
-                            msg += "• 해당 없음\n\n"
-                        else:
-                            for idx, row in df_d30.iterrows():
-                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
-                            msg += "\n"
-
-                        msg += f"🗓️ [2달 이내 예정] ({len(df_d60)}건)\n"
-                        if df_d60.empty:
-                            msg += "• 해당 없음\n"
-                        else:
-                            for idx, row in df_d60.iterrows():
-                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
-                        
-                        payload = {
-                            "type": "message",
-                            "attachments": [
-                                {
-                                    "contentType": "application/vnd.microsoft.card.adaptive",
-                                    "content": {
-                                        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                                        "type": "AdaptiveCard",
-                                        "version": "1.2",
-                                        "body": [
-                                            {
-                                                "type": "TextBlock",
-                                                "text": msg,
-                                                "wrap": True
-                                            }
-                                        ]
-                                    }
-                                }
-                            ]
-                        }
-
-                        res = requests.post(webhook_url, json=payload)
-                        
-                        if res.status_code in [200, 202]:
-                            st.success("✅ 팀즈 채널로 전체 일정 알림이 성공적으로 전송되었습니다!")
-                        else:
-                            st.error(f"❌ 전송 실패 (오류 코드: {res.status_code}) - 웹훅 URL을 다시 확인해주세요.")
-                    except Exception as ex:
-                        st.error(f"전송 중 오류 발생: {ex}")
-
-    elif menu == "📈 월별 수주 통계":
-        st.subheader("📈 월별 발주서 수령 현황 분석")
-        date_rcv_col = find_col(['발주서 수령', '발주서'])
-        if date_rcv_col and date_rcv_col in df.columns:
-            df['수령_월'] = pd.to_datetime(df[date_rcv_col], errors='coerce').dt.to_period('M').astype(str)
-            monthly_counts = df['수령_월'].value_counts().sort_index()
-            st.bar_chart(monthly_counts)
-        else:
-            st.info("발주서 수령일 기준 통계를 생성할 수 없습니다.")
-
-except Exception as e:
-    st.error(f"데이터를 불러오는 중 오류가 발생했습니다: {e}")
+                            df_d60 = df[(df[date_col] > today + timedelta(days=30)) & (df[date_col] <= today + timedelta(days=6
