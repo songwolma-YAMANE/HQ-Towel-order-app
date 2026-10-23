@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import requests
+import io
 
 # 페이지 설정 (와이드 레이아웃)
 st.set_page_config(page_title="본사 문직 수주/출고 관리 시스템", layout="wide")
@@ -28,7 +29,7 @@ st.markdown("""
 
 # 타이틀 디자인
 st.markdown('<div class="main-header">📦 본사 문직 제품 수주 및 출고 관리 시스템</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">실시간 구글 스프레드시트 연동 및 스마트 대시보드</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">실시간 구글 스프레드시트 연동 및 스마트 대시보드 (UPGRADE VERSION)</div>', unsafe_allow_html=True)
 
 # 구글 스프레드시트 자동 연동
 SHEET_ID = "13Lp9gA3p8a_WstCQA9AyMrfzM8YTtqUpBV8Ryxzszjg"
@@ -91,9 +92,17 @@ try:
         target_d30 = today + timedelta(days=30)
         target_d60 = today + timedelta(days=60)
 
+        # 1. 요약 지표 카드 및 출고 완료율 게이지 바 추가
+        total_len = len(df)
+        completed_count = 0
+        if completed_col and completed_col in df.columns:
+            completed_count = len(df[df[completed_col].astype(str).str.upper() == 'O'])
+        
+        completion_rate = int((completed_count / total_len * 100) if total_len > 0 else 0)
+
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric(label="📋 전체 수주 건수", value=f"{len(df):,} 건")
+            st.metric(label="📋 전체 수주 건수", value=f"{total_len:,} 건")
         
         imminent_d7 = len(df[(df[date_col] >= today) & (df[date_col] <= target_d7)]) if date_col in df.columns else 0
         with col2:
@@ -106,43 +115,47 @@ try:
         imminent_d60 = len(df[(df[date_col] > target_d30) & (df[date_col] <= target_d60)]) if date_col in df.columns else 0
         with col4:
             st.metric(label="🗓️ 2달 후(60일) 예정", value=f"{imminent_d60} 건")
+
+        # 전체 출고 완료율 프로그레스 바 표시
+        st.markdown(f"**🎯 전체 출고 달성률: {completion_rate}% ({completed_count}건 / 총 {total_len}건 완료)**")
+        st.progress(completion_rate / 100.0)
             
         st.markdown("---")
         
-        st.subheader("🚨 [긴급] 7일 이내 납기 임박 오더")
-        if date_col and date_col in df.columns:
-            df_d7 = df[(df[date_col] >= today) & (df[date_col] <= target_d7)]
-            if not df_d7.empty:
-                st.warning(f"⚠️ 총 {len(df_d7)}건의 제품이 7일 이내 납기를 앞두고 있습니다!")
-                disp_cols = [c for c in [ship_col, agency_col, product_col, 'ORDER PCS', date_col] if c and c in df.columns]
-                st.dataframe(df_d7[disp_cols], use_container_width=True)
-            else:
-                st.success("🎉 향후 7일 이내 납기가 임박한 제품이 없습니다.")
+        # 2. 접이식 박스(Expander)를 적용한 기간별 출고 예정 리스트
+        with st.expander(f"🚨 [긴급] 7일 이내 납기 임박 오더 ({imminent_d7}건)", expanded=True):
+            if date_col and date_col in df.columns:
+                df_d7 = df[(df[date_col] >= today) & (df[date_col] <= target_d7)]
+                if not df_d7.empty:
+                    disp_cols = [c for c in [ship_col, agency_col, product_col, 'ORDER PCS', date_col, completed_col] if c and c in df.columns]
+                    st.dataframe(df_d7[disp_cols], use_container_width=True)
+                else:
+                    st.success("🎉 향후 7일 이내 납기가 임박한 제품이 없습니다.")
 
-        st.subheader("📅 [예정] 1달 이내(8일~30일 후) 출고 예정 오더")
-        if date_col and date_col in df.columns:
-            df_d30 = df[(df[date_col] > target_d7) & (df[date_col] <= target_d30)]
-            if not df_d30.empty:
-                st.info(f"ℹ️ 총 {len(df_d30)}건의 제품이 향후 1달 이내 출고를 앞두고 있습니다.")
-                disp_cols = [c for c in [ship_col, agency_col, product_col, 'ORDER PCS', date_col] if c and c in df.columns]
-                st.dataframe(df_d30[disp_cols], use_container_width=True)
-            else:
-                st.info("해당 기간 내 출고 예정인 제품이 없습니다.")
+        with st.expander(f"📅 [예정] 1달 이내(8일~30일 후) 출고 예정 오더 ({imminent_d30}건)", expanded=False):
+            if date_col and date_col in df.columns:
+                df_d30 = df[(df[date_col] > target_d7) & (df[date_col] <= target_d30)]
+                if not df_d30.empty:
+                    disp_cols = [c for c in [ship_col, agency_col, product_col, 'ORDER PCS', date_col, completed_col] if c and c in df.columns]
+                    st.dataframe(df_d30[disp_cols], use_container_width=True)
+                else:
+                    st.info("해당 기간 내 출고 예정인 제품이 없습니다.")
 
-        st.subheader("🗓️ [계획] 2달 이내(31일~60일 후) 출고 예정 오더")
-        if date_col and date_col in df.columns:
-            df_d60 = df[(df[date_col] > target_d30) & (df[date_col] <= target_d60)]
-            if not df_d60.empty:
-                st.info(f"ℹ️ 총 {len(df_d60)}건의 제품이 향후 2달 이내 출고를 앞두고 있습니다.")
-                disp_cols = [c for c in [ship_col, agency_col, product_col, 'ORDER PCS', date_col] if c and c in df.columns]
-                st.dataframe(df_d60[disp_cols], use_container_width=True)
-            else:
-                st.info("해당 기간 내 출고 예정인 제품이 없습니다.")
+        with st.expander(f"🗓️ [계획] 2달 이내(31일~60일 후) 출고 예정 오더 ({imminent_d60}건)", expanded=False):
+            if date_col and date_col in df.columns:
+                df_d60 = df[(df[date_col] > target_d30) & (df[date_col] <= target_d60)]
+                if not df_d60.empty:
+                    disp_cols = [c for c in [ship_col, agency_col, product_col, 'ORDER PCS', date_col, completed_col] if c and c in df.columns]
+                    st.dataframe(df_d60[disp_cols], use_container_width=True)
+                else:
+                    st.info("해당 기간 내 출고 예정인 제품이 없습니다.")
                 
         st.markdown("---")
+        
+        # 3. 실시간 전체 오더 조회 및 엑셀 다운로드 / 날짜 범위 필터 기능 추가
         st.subheader("🔍 실시간 전체 오더 조회 및 필터링")
         
-        col_f1, col_f2 = st.columns(2)
+        col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
             search_query = st.text_input("🔍 출하처 또는 제품명 검색", "")
         with col_f2:
@@ -151,8 +164,12 @@ try:
                 selected_agency = st.selectbox("🏢 대리점 선택 필터", agencies)
             else:
                 selected_agency = '전체'
+        with col_f3:
+            use_date_filter = st.checkbox("📅 납기일 범위 직접 지정 조회")
         
         filtered_df = df.copy()
+        
+        # 검색어 필터
         if search_query:
             cond = pd.Series(False, index=filtered_df.index)
             if ship_col and ship_col in filtered_df.columns:
@@ -161,9 +178,38 @@ try:
                 cond = cond | filtered_df[product_col].astype(str).str.contains(search_query, na=False, case=False)
             filtered_df = filtered_df[cond]
             
+        # 대리점 필터
         if selected_agency != '전체' and agency_col and agency_col in filtered_df.columns:
             filtered_df = filtered_df[filtered_df[agency_col] == selected_agency]
-            
+
+        # 날짜 범위 필터
+        if use_date_filter and date_col in filtered_df.columns:
+            valid_dates = filtered_df[date_col].dropna()
+            if not valid_dates.empty:
+                min_d = valid_dates.min().date()
+                max_d = valid_dates.max().date()
+                date_range = st.date_input("조회할 납기일 범위를 선택하세요", [min_d, max_d])
+                if len(date_range) == 2:
+                    start_r, end_r = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+                    filtered_df = filtered_df[(filtered_df[date_col] >= start_r) & (filtered_df[date_col] <= end_r)]
+
+        # 조회 결과 건수 표시 및 엑셀 다운로드 버튼
+        col_res1, col_res2 = st.columns([3, 1])
+        with col_res1:
+            st.write(f"총 **{len(filtered_df):,}건**의 오더가 검색되었습니다.")
+        with col_res2:
+            # 엑셀 다운로드 버튼 생성
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                filtered_df.to_excel(writer, index=False, sheet_name='오더조회결과')
+            excel_data = output.getvalue()
+            st.download_button(
+                label="📥 엑셀로 다운로드",
+                data=excel_data,
+                file_name=f"수주출고관리_리스트_{datetime.today().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
         st.dataframe(filtered_df, use_container_width=True)
 
     elif menu == "💬 팀즈 알림 전송" and is_admin:
@@ -211,7 +257,6 @@ try:
                             for idx, row in df_d60.iterrows():
                                 msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
                         
-                        # 팀즈가 인식할 수 있는 어댑티브 카드(Adaptive Card) JSON 형식으로 페이로드 구성
                         payload = {
                             "type": "message",
                             "attachments": [
