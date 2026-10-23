@@ -39,22 +39,37 @@ def load_data():
     header_row = 0
     for i in range(len(df_temp)):
         row_str = str(df_temp.iloc[i].values)
-        if '출하처' in row_str or 'SHIPMENT' in row_str:
+        if '출하처' in row_str or 'SHIPMENT' in row_str or '제품명' in row_str:
             header_row = i
             break
     df = pd.read_csv(url, header=header_row)
+    # 컬럼명 앞뒤 공백 제거로 에러 방지
+    df.columns = df.columns.astype(str).str.strip()
     return df
 
 try:
     df = load_data()
     
+    # 컬럼명을 유연하게 찾기 위한 함수
+    def find_col(keywords):
+        for col in df.columns:
+            for kw in keywords:
+                if kw.lower() in col.lower():
+                    return col
+        return None
+
+    date_col = find_col(['확정납기 1차', 'DELIVERY 1', '납기'])
+    agency_col = find_col(['대리점', 'AGENCY'])
+    ship_col = find_col(['출하처', 'SHIPMENT'])
+    product_col = find_col(['제품명', 'KOREAN NAME'])
+    completed_col = find_col(['출고 완료', '출고완료'])
+
     # 사이드바 메뉴 및 필터 구성
     st.sidebar.header("🛠️ 시스템 메뉴")
     menu = st.sidebar.radio("이동할 메뉴 선택", ["📊 종합 대시보드 & 알림", "✏️ 오더 데이터 직접 편집", "📈 월별 수주 통계"])
     
     # 날짜 데이터 정제
-    date_col = '확정납기 1차 (DELIVERY 1)'
-    if date_col in df.columns:
+    if date_col and date_col in df.columns:
         df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
 
     if menu == "📊 종합 대시보드 & 알림":
@@ -65,18 +80,18 @@ try:
         
         today = pd.to_datetime(datetime.today().date())
         target_date = today + timedelta(days=7)
-        if date_col in df.columns:
+        
+        imminent_count = 0
+        if date_col and date_col in df.columns:
             imminent_count = len(df[(df[date_col] >= today) & (df[date_col] <= target_date)])
-        else:
-            imminent_count = 0
+            
         with col2:
             st.metric(label="🚨 7일 이내 납기 임박", value=f"{imminent_count} 건")
             
-        completed_col = '출고 완료'
-        if completed_col in df.columns:
+        completed_count = 0
+        if completed_col and completed_col in df.columns:
             completed_count = len(df[df[completed_col].astype(str).str.upper() == 'O'])
-        else:
-            completed_count = 0
+            
         with col3:
             st.metric(label="✅ 출고 완료 건수", value=f"{completed_count} 건")
             
@@ -84,27 +99,27 @@ try:
         
         # D-7 납기 임박 알림 섹션
         st.subheader("🚨 납기 임박 알림 (D-7 이내)")
-        if date_col in df.columns:
+        if date_col and date_col in df.columns:
             imminent_df = df[(df[date_col] >= today) & (df[date_col] <= target_date)]
             if not imminent_df.empty:
                 st.warning(f"⚠️ 총 {len(imminent_df)}건의 제품이 7일 이내 납기를 앞두고 있습니다!")
-                display_cols = [c for c in ['출하처 (SHIPMENT)', '대리점 (AGENCY)', '제품명 (KOREAN NAME)', 'ORDER PCS', date_col] if c in df.columns]
-                st.dataframe(imminent_df[display_cols], use_container_width=True)
+                disp_cols = [c for c in [ship_col, agency_col, product_col, 'ORDER PCS', date_col] if c and c in df.columns]
+                st.dataframe(imminent_df[disp_cols], use_container_width=True)
             else:
                 st.success("🎉 향후 7일 이내 납기가 임박한 제품이 없습니다.")
+        else:
+            st.info("납기일 컬럼을 찾을 수 없습니다.")
                 
         st.markdown("---")
         st.subheader("🔍 실시간 전체 오더 조회 및 필터링")
         
         # 검색 및 대리점별 필터 강화
         col_f1, col_f2 = st.columns(2)
-        agency_col = '대리점 (AGENCY)'
-        ship_col = '출하처 (SHIPMENT)'
         
         with col_f1:
             search_query = st.text_input("🔍 출하처 또는 제품명 검색", "")
         with col_f2:
-            if agency_col in df.columns:
+            if agency_col and agency_col in df.columns:
                 agencies = ['전체'] + list(df[agency_col].dropna().unique())
                 selected_agency = st.selectbox("🏢 대리점 선택 필터", agencies)
             else:
@@ -112,11 +127,14 @@ try:
         
         filtered_df = df.copy()
         if search_query:
-            filtered_df = filtered_df[
-                filtered_df[ship_col].astype(str).str.contains(search_query, na=False) |
-                filtered_df['제품명 (KOREAN NAME)'].astype(str).str.contains(search_query, na=False)
-            ]
-        if selected_agency != '전체':
+            cond = pd.Series(False, index=filtered_df.index)
+            if ship_col and ship_col in filtered_df.columns:
+                cond = cond | filtered_df[ship_col].astype(str).str.contains(search_query, na=False, case=False)
+            if product_col and product_col in filtered_df.columns:
+                cond = cond | filtered_df[product_col].astype(str).str.contains(search_query, na=False, case=False)
+            filtered_df = filtered_df[cond]
+            
+        if selected_agency != '전체' and agency_col and agency_col in filtered_df.columns:
             filtered_df = filtered_df[filtered_df[agency_col] == selected_agency]
             
         st.dataframe(filtered_df, use_container_width=True)
@@ -125,10 +143,8 @@ try:
         st.subheader("✏️ 웹 화면 직접 편집기 (Data Editor)")
         st.info("💡 표 안의 셀을 더블클릭하여 내용을 자유롭게 수정하거나 새로운 행을 추가할 수 있습니다. 수정한 후 아래 다운로드 버튼을 눌러 구글 시트에 반영하세요.")
         
-        # 데이터 에디터 제공
         edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True)
         
-        # 변경된 데이터 다운로드 기능
         csv_data = edited_df.to_csv(index=False).encode('utf-8-sig')
         st.download_button(
             label="📥 수정된 데이터 파일 다운로드 (구글 시트 업로드용)",
@@ -139,8 +155,8 @@ try:
 
     elif menu == "📈 월별 수주 통계":
         st.subheader("📈 월별 발주서 수령 현황 분석")
-        date_rcv_col = '발주서 수령'
-        if date_rcv_col in df.columns:
+        date_rcv_col = find_col(['발주서 수령', '발주서'])
+        if date_rcv_col and date_rcv_col in df.columns:
             df['수령_월'] = pd.to_datetime(df[date_rcv_col], errors='coerce').dt.to_period('M').astype(str)
             monthly_counts = df['수령_월'].value_counts().sort_index()
             st.bar_chart(monthly_counts)
