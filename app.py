@@ -159,7 +159,6 @@ try:
         if completed_col and completed_col in df.columns:
             completed_count = len(df[df[completed_col].astype(str).str.upper() == 'O'])
         
-        # 지연 오더 계산 (납기일은 지났고, 출고 완료 'O'가 아닌 건)
         overdue_df = pd.DataFrame()
         if date_col in df.columns:
             if completed_col in df.columns:
@@ -189,7 +188,6 @@ try:
             
         st.markdown("---")
         
-        # 🔥 지연(Overdue) 오더 긴급 경고 섹션
         if overdue_count > 0:
             st.error(f"🔥 **[긴급 경고] 납기일이 지났으나 아직 출고되지 않은 오더가 총 {overdue_count}건 있습니다! 확인이 필요합니다.**")
             with st.expander(f"🔥 납기 지연 오더 상세 보기 ({overdue_count}건)", expanded=True):
@@ -221,4 +219,46 @@ try:
         with col_f1:
             search_query = st.text_input(t["search_box"], "")
         with col_f2:
-            if agency_col and agency_col in df.columns
+            if agency_col and agency_col in df.columns:
+                agencies = ['All'] + list(df[agency_col].dropna().unique())
+                selected_agency = st.selectbox(t["agency_filter"], agencies)
+            else:
+                selected_agency = 'All'
+        with col_f3:
+            use_date_filter = st.checkbox("📅 Custom Date Range Filter")
+        
+        filtered_df = df.copy()
+        
+        if search_query:
+            cond = pd.Series(False, index=filtered_df.index)
+            if ship_col and ship_col in filtered_df.columns:
+                cond = cond | filtered_df[ship_col].astype(str).str.contains(search_query, na=False, case=False)
+            if product_col and product_col in filtered_df.columns:
+                cond = cond | filtered_df[product_col].astype(str).str.contains(search_query, na=False, case=False)
+            filtered_df = filtered_df[cond]
+            
+        if selected_agency != 'All' and agency_col and agency_col in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df[agency_col] == selected_agency]
+
+        if use_date_filter and date_col in filtered_df.columns:
+            valid_dates = filtered_df[date_col].dropna()
+            if not valid_dates.empty:
+                min_d = valid_dates.min().date()
+                max_d = valid_dates.max().date()
+                date_range = st.date_input("Select date range", [min_d, max_d])
+                if len(date_range) == 2:
+                    start_r, end_r = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+                    filtered_df = filtered_df[(filtered_df[date_col] >= start_r) & (filtered_df[date_col] <= end_r)]
+
+        st.markdown("### 📋 실시간 오더 편집 및 확인 에디터")
+        st.info("💡 표 내부의 셀을 직접 클릭하여 수정하거나 상태를 확인하고, 변경 사항은 엑셀로 다운로드할 수 있습니다.")
+        edited_df = st.data_editor(filtered_df, use_container_width=True, num_rows="dynamic")
+
+        col_res1, col_res2 = st.columns([3, 1])
+        with col_res1:
+            st.write(f"Found **{len(edited_df):,}** orders.")
+        with col_res2:
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                edited_df.to_excel(writer, index=False, sheet_name='Orders')
+            excel_data
