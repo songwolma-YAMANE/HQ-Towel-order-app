@@ -66,7 +66,7 @@ try:
     # --- 사이드바 보안 및 메뉴 설정 ---
     st.sidebar.header("🔐 보안 및 시스템 메뉴")
     
-    # 관리자 비밀번호 (원하시는 문자로 언제든지 변경 가능)
+    # 관리자 비밀번호
     ADMIN_PASSWORD = "songwol1234" 
     
     input_pw = st.sidebar.text_input("관리자 비밀번호 입력", type="password", placeholder="관리자 전용 기능 해제")
@@ -153,7 +153,7 @@ try:
 
     elif menu == "💬 팀즈 알림 전송" and is_admin:
         st.subheader("💬 마이크로소프트 팀즈 납기 임박 알림 전송")
-        st.info("💡 팀즈 채널의 **수신 웹훅(Incoming Webhook) URL**을 입력하고 버튼을 누르면, 납기 임박 오더 목록이 해당 팀즈 채널로 즉시 전송됩니다.")
+        st.info("💡 팀즈 채널의 **웹훅(Webhook) URL**을 입력하고 버튼을 누르면, 납기 임박 오더 목록이 해당 팀즈 채널로 즉시 전송됩니다.")
         
         with st.form("teams_form"):
             webhook_url = st.text_input("🔗 팀즈 웹훅 URL (Webhook URL)", type="password", placeholder="https://outlook.office.com/webhook/...")
@@ -182,7 +182,8 @@ try:
                         payload = {"text": msg}
                         res = requests.post(webhook_url, json=payload)
                         
-                        if res.status_code == 200:
+                        # 200 또는 202 모두 성공으로 처리
+                        if res.status_code in [200, 202]:
                             st.success("✅ 팀즈 채널로 알림이 성공적으로 전송되었습니다!")
                         else:
                             st.error(f"❌ 전송 실패 (오류 코드: {res.status_code}) - 웹훅 URL을 다시 확인해주세요.")
