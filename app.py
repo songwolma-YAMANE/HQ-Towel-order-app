@@ -66,7 +66,6 @@ try:
     # --- 사이드바 보안 및 메뉴 설정 ---
     st.sidebar.header("🔐 보안 및 시스템 메뉴")
     
-    # 관리자 비밀번호
     ADMIN_PASSWORD = "songwol1234" 
     
     input_pw = st.sidebar.text_input("관리자 비밀번호 입력", type="password", placeholder="관리자 전용 기능 해제")
@@ -82,19 +81,16 @@ try:
             st.sidebar.info("💡 일반 조회 모드 (검색 및 현황 확인 가능)")
         menu = st.sidebar.radio("메뉴 선택", ["📊 종합 대시보드 & 일정별 알림", "📈 월별 수주 통계"])
 
-    # 날짜 데이터 정제
     today = pd.to_datetime(datetime.today().date())
     
     if date_col and date_col in df.columns:
         df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
 
     if menu == "📊 종합 대시보드 & 일정별 알림":
-        # 기간별 타겟 날짜 계산
         target_d7 = today + timedelta(days=7)
         target_d30 = today + timedelta(days=30)
         target_d60 = today + timedelta(days=60)
 
-        # 요약 지표 카드
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric(label="📋 전체 수주 건수", value=f"{len(df):,} 건")
@@ -113,7 +109,6 @@ try:
             
         st.markdown("---")
         
-        # 1. D-7 납기 임박 알림 섹션
         st.subheader("🚨 [긴급] 7일 이내 납기 임박 오더")
         if date_col and date_col in df.columns:
             df_d7 = df[(df[date_col] >= today) & (df[date_col] <= target_d7)]
@@ -124,7 +119,6 @@ try:
             else:
                 st.success("🎉 향후 7일 이내 납기가 임박한 제품이 없습니다.")
 
-        # 2. 1달 후(30일) 예정 알림 섹션
         st.subheader("📅 [예정] 1달 이내(8일~30일 후) 출고 예정 오더")
         if date_col and date_col in df.columns:
             df_d30 = df[(df[date_col] > target_d7) & (df[date_col] <= target_d30)]
@@ -135,7 +129,6 @@ try:
             else:
                 st.info("해당 기간 내 출고 예정인 제품이 없습니다.")
 
-        # 3. 2달 후(60일) 예정 알림 섹션
         st.subheader("🗓️ [계획] 2달 이내(31일~60일 후) 출고 예정 오더")
         if date_col and date_col in df.columns:
             df_d60 = df[(df[date_col] > target_d30) & (df[date_col] <= target_d60)]
@@ -195,7 +188,6 @@ try:
                             
                         msg = "📦 [본사 문직 제품 출고 일정 종합 리스트]\n\n"
                         
-                        # D-7
                         msg += f"🚨 [7일 이내 긴급 납기] ({len(df_d7)}건)\n"
                         if df_d7.empty:
                             msg += "• 해당 없음\n\n"
@@ -204,7 +196,6 @@ try:
                                 msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
                             msg += "\n"
 
-                        # D-30 (1달)
                         msg += f"📅 [1달 이내 예정] ({len(df_d30)}건)\n"
                         if df_d30.empty:
                             msg += "• 해당 없음\n\n"
@@ -213,7 +204,6 @@ try:
                                 msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
                             msg += "\n"
 
-                        # D-60 (2달)
                         msg += f"🗓️ [2달 이내 예정] ({len(df_d60)}건)\n"
                         if df_d60.empty:
                             msg += "• 해당 없음\n"
@@ -221,7 +211,28 @@ try:
                             for idx, row in df_d60.iterrows():
                                 msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
                         
-                        payload = {"text": msg}
+                        # 팀즈가 인식할 수 있는 어댑티브 카드(Adaptive Card) JSON 형식으로 페이로드 구성
+                        payload = {
+                            "type": "message",
+                            "attachments": [
+                                {
+                                    "contentType": "application/vnd.microsoft.card.adaptive",
+                                    "content": {
+                                        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                                        "type": "AdaptiveCard",
+                                        "version": "1.2",
+                                        "body": [
+                                            {
+                                                "type": "TextBlock",
+                                                "text": msg,
+                                                "wrap": True
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+
                         res = requests.post(webhook_url, json=payload)
                         
                         if res.status_code in [200, 202]:
@@ -233,7 +244,7 @@ try:
 
     elif menu == "📈 월별 수주 통계":
         st.subheader("📈 월별 발주서 수령 현황 분석")
-        date_rcv_col = find_col(['발수서 수령', '발주서'])
+        date_rcv_col = find_col(['발주서 수령', '발주서'])
         if date_rcv_col and date_rcv_col in df.columns:
             df['수령_월'] = pd.to_datetime(df[date_rcv_col], errors='coerce').dt.to_period('M').astype(str)
             monthly_counts = df['수령_월'].value_counts().sort_index()
