@@ -310,4 +310,64 @@ try:
                         if date_col and date_col in df.columns:
                             df_d7 = df[(df[date_col] >= today) & (df[date_col] <= today + timedelta(days=7))]
                             df_d30 = df[(df[date_col] > today + timedelta(days=7)) & (df[date_col] <= today + timedelta(days=30))]
-                            df_d60 = df[(df[date_col] > today + timedelta(days=30)) & (df[date_col] <= today + timedelta(days=6
+                            df_d60 = df[(df[date_col] > today + timedelta(days=30)) & (df[date_col] <= today + timedelta(days=60))]
+                        else:
+                            df_d7, df_d30, df_d60 = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+                            
+                        msg = "📦 [본사 문직 제품 출고 일정 종합 리스트]\n\n"
+                        
+                        msg += f"🚨 [7일 이내 긴급 납기] ({len(df_d7)}건)\n"
+                        if df_d7.empty:
+                            msg += "• 해당 없음\n\n"
+                        else:
+                            for idx, row in df_d7.iterrows():
+                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
+                            msg += "\n"
+
+                        msg += f"📅 [1달 이내 예정] ({len(df_d30)}건)\n"
+                        if df_d30.empty:
+                            msg += "• 해당 없음\n\n"
+                        else:
+                            for idx, row in df_d30.iterrows():
+                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
+                            msg += "\n"
+
+                        msg += f"🗓️ [2달 이내 예정] ({len(df_d60)}건)\n"
+                        if df_d60.empty:
+                            msg += "• 해당 없음\n"
+                        else:
+                            for idx, row in df_d60.iterrows():
+                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
+                        
+                        payload = {
+                            "type": "message",
+                            "attachments": [
+                                {
+                                    "contentType": "application/vnd.microsoft.card.adaptive",
+                                    "content": {
+                                        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                                        "type": "AdaptiveCard",
+                                        "version": "1.2",
+                                        "body": [
+                                            {
+                                                "type": "TextBlock",
+                                                "text": msg,
+                                                "wrap": True
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+
+                        res = requests.post(webhook_url, json=payload)
+                        
+                        if res.status_code in [200, 202]:
+                            st.success("✅ 팀즈 채널로 전체 일정 알림이 성공적으로 전송되었습니다!")
+                        else:
+                            st.error(f"❌ 전송 실패 (오류 코드: {res.status_code}) - 웹훅 URL을 다시 확인해주세요.")
+                    except Exception as ex:
+                        st.error(f"전송 중 오류 발생: {ex}")
+
+except Exception as e:
+    st.error(f"데이터를 불러오는 중 오류가 발생했습니다: {e}")
