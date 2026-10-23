@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import requests
 import io
+import streamlit.components.v1 as components
 
 # 페이지 설정 (와이드 레이아웃)
 st.set_page_config(page_title="본사 문직 수주/출고 관리 시스템", layout="wide")
@@ -43,7 +44,9 @@ LANG_DICT = {
         "menu_3": "🏢 대리점/출하처별 상세 이력",
         "menu_4": "📈 통계 및 거래처 분석",
         "menu_5": "📝 실무자 메모 및 특이사항",
-        "menu_6": "💬 팀즈 알림 전송",
+        "menu_6": "📜 변경 이력 로그 (Audit Trail)",
+        "menu_7": "📄 경영진 보고서 & PDF 인쇄",
+        "menu_8": "💬 팀즈 알림 전송",
         "total_orders": "📋 전체 수주 건수",
         "overdue_orders": "🔥 납기 지연 (Overdue)",
         "d7_imminent": "🚨 7일 이내 납기",
@@ -67,7 +70,9 @@ LANG_DICT = {
         "menu_3": "🏢 Agency/Shipment History",
         "menu_4": "📈 Statistics & Partner Analysis",
         "menu_5": "📝 Staff Memos & Notes",
-        "menu_6": "💬 Send Teams Alert",
+        "menu_6": "📜 Audit Trail & Change Logs",
+        "menu_7": "📄 Management Report & PDF Print",
+        "menu_8": "💬 Send Teams Alert",
         "total_orders": "📋 Total Orders",
         "overdue_orders": "🔥 Overdue Orders",
         "d7_imminent": "🚨 Due within 7 Days",
@@ -123,6 +128,9 @@ try:
 
     if 'order_memos' not in st.session_state:
         st.session_state.order_memos = {}
+        
+    if 'audit_logs' not in st.session_state:
+        st.session_state.audit_logs = []
 
     # --- 사이드바 보안 및 메뉴 설정 ---
     st.sidebar.header(t["sec_menu"])
@@ -133,13 +141,13 @@ try:
     
     if is_admin:
         st.sidebar.success(t["admin_success"])
-        menu_options = [t["menu_1"], t["menu_2"], t["menu_3"], t["menu_4"], t["menu_5"], t["menu_6"]]
+        menu_options = [t["menu_1"], t["menu_2"], t["menu_3"], t["menu_4"], t["menu_5"], t["menu_6"], t["menu_7"], t["menu_8"]]
     else:
         if input_pw:
             st.sidebar.error(t["pw_error"])
         else:
             st.sidebar.info(t["general_info"])
-        menu_options = [t["menu_1"], t["menu_2"], t["menu_3"], t["menu_4"], t["menu_5"]]
+        menu_options = [t["menu_1"], t["menu_2"], t["menu_3"], t["menu_4"], t["menu_5"], t["menu_6"], t["menu_7"]]
 
     menu = st.sidebar.radio("Menu", menu_options)
 
@@ -291,7 +299,7 @@ try:
         else:
             st.warning("날짜 컬럼을 찾을 수 없습니다.")
 
-    # 3. 메뉴 3: 대리점/출하처별 상세 이력 팝업/조회
+    # 3. 메뉴 3: 대리점/출하처별 상세 이력 조회
     elif menu == t["menu_3"]:
         st.subheader("🏢 대리점 및 출하처별 상세 이력 조회")
         st.info("💡 특정 거래처(대리점 또는 출하처)를 선택하면 해당 업체의 전체 주문 내역과 진행 상황이 한눈에 요약됩니다.")
@@ -384,102 +392,4 @@ try:
             memo_input = st.text_area("✍️ Enter Notes / Memo", value=current_memo, placeholder="e.g., Delayed due to fabric stock")
             
             if st.button("💾 Save Memo"):
-                st.session_state.order_memos[selected_idx] = memo_input
-                st.success("✅ Memo saved successfully!")
-                
-            st.markdown("---")
-            st.markdown("### 📋 All Saved Memos")
-            if st.session_state.order_memos:
-                memo_list = []
-                for idx, m in st.session_state.order_memos.items():
-                    r = df.loc[idx]
-                    memo_list.append({
-                        "Index": idx,
-                        "Shipment": r.get(ship_col, ''),
-                        "Product": r.get(product_col, ''),
-                        "Memo": m
-                    })
-                st.dataframe(pd.DataFrame(memo_list), use_container_width=True)
-            else:
-                st.info("No memos recorded yet.")
-        else:
-            st.warning("Required columns missing for memo feature.")
-
-    # 6. 메뉴 6: 팀즈 알림 전송 (관리자 전용)
-    elif menu == t["menu_6"] and is_admin:
-        st.subheader("💬 Microsoft Teams Schedule Alert Dispatch")
-        st.info("💡 Enter your Teams Channel Webhook URL to dispatch schedule alerts.")
-        
-        with st.form("teams_form"):
-            webhook_url = st.text_input("🔗 Teams Webhook URL", type="password", placeholder="https://outlook.office.com/webhook/...")
-            submit_btn = st.form_submit_button("🚀 Send Full Schedule to Teams Channel")
-            
-            if submit_btn:
-                if not webhook_url:
-                    st.error("Please enter the Teams Webhook URL.")
-                else:
-                    try:
-                        if date_col and date_col in df.columns:
-                            df_d7 = df[(df[date_col] >= today) & (df[date_col] <= today + timedelta(days=7))]
-                            df_d30 = df[(df[date_col] > today + timedelta(days=7)) & (df[date_col] <= today + timedelta(days=30))]
-                            df_d60 = df[(df[date_col] > today + timedelta(days=30)) & (df[date_col] <= today + timedelta(days=60))]
-                        else:
-                            df_d7, df_d30, df_d60 = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-                            
-                        msg = "📦 [HQ Textile Order Schedule Report]\n\n"
-                        
-                        msg += f"🚨 [Imminent within 7 Days] ({len(df_d7)} orders)\n"
-                        if df_d7.empty:
-                            msg += "• None\n\n"
-                        else:
-                            for idx, row in df_d7.iterrows():
-                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
-                            msg += "\n"
-
-                        msg += f"📅 [Expected within 30 Days] ({len(df_d30)} orders)\n"
-                        if df_d30.empty:
-                            msg += "• None\n\n"
-                        else:
-                            for idx, row in df_d30.iterrows():
-                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
-                            msg += "\n"
-
-                        msg += f"🗓️ [Expected within 60 Days] ({len(df_d60)} orders)\n"
-                        if df_d60.empty:
-                            msg += "• None\n"
-                        else:
-                            for idx, row in df_d60.iterrows():
-                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
-                        
-                        payload = {
-                            "type": "message",
-                            "attachments": [
-                                {
-                                    "contentType": "application/vnd.microsoft.card.adaptive",
-                                    "content": {
-                                        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                                        "type": "AdaptiveCard",
-                                        "version": "1.2",
-                                        "body": [
-                                            {
-                                                "type": "TextBlock",
-                                                "text": msg,
-                                                "wrap": True
-                                            }
-                                        ]
-                                    }
-                                }
-                            ]
-                        }
-
-                        res = requests.post(webhook_url, json=payload)
-                        
-                        if res.status_code in [200, 202]:
-                            st.success("✅ Schedule alert successfully sent to Teams channel!")
-                        else:
-                            st.error(f"❌ Failed (Error Code: {res.status_code}) - Please check your Webhook URL.")
-                    except Exception as ex:
-                        st.error(f"Error during transmission: {ex}")
-
-except Exception as e:
-    st.error(f"Error loading data: {e}")
+                st.session_state.
