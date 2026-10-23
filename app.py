@@ -66,7 +66,7 @@ try:
     # --- 사이드바 보안 및 메뉴 설정 ---
     st.sidebar.header("🔐 보안 및 시스템 메뉴")
     
-    # 관리자 비밀번호 (원하시는 문자로 언제든지 코드를 수정해 바꿀 수 있습니다)
+    # 관리자 비밀번호 (원하시는 문자로 언제든지 변경 가능)
     ADMIN_PASSWORD = "songwol1234" 
     
     input_pw = st.sidebar.text_input("관리자 비밀번호 입력", type="password", placeholder="관리자 전용 기능 해제")
@@ -74,7 +74,7 @@ try:
     
     if is_admin:
         st.sidebar.success("🔓 관리자 모드가 활성화되었습니다.")
-        menu = st.sidebar.radio("메뉴 선택", ["📊 종합 대시보드 & 알림", "📱 텔레그램 알림 전송", "📈 월별 수주 통계"])
+        menu = st.sidebar.radio("메뉴 선택", ["📊 종합 대시보드 & 알림", "💬 팀즈 알림 전송", "📈 월별 수주 통계"])
     else:
         if input_pw:
             st.sidebar.error("❌ 비밀번호가 틀렸습니다. (일반 조회 모드)")
@@ -151,18 +151,17 @@ try:
             
         st.dataframe(filtered_df, use_container_width=True)
 
-    elif menu == "📱 텔레그램 알림 전송" and is_admin:
-        st.subheader("📱 텔레그램 납기 임박 알림 전송 설정")
-        st.info("💡 텔레그램 봇 토큰과 채팅 ID를 입력하고 버튼을 누르면, 현재 납기가 임박한 오더 목록이 스마트폰 텔레그램 메신저로 즉시 전송됩니다.")
+    elif menu == "💬 팀즈 알림 전송" and is_admin:
+        st.subheader("💬 마이크로소프트 팀즈 납기 임박 알림 전송")
+        st.info("💡 팀즈 채널의 **수신 웹훅(Incoming Webhook) URL**을 입력하고 버튼을 누르면, 납기 임박 오더 목록이 해당 팀즈 채널로 즉시 전송됩니다.")
         
-        with st.form("telegram_form"):
-            bot_token = st.text_input("🤖 텔레그램 Bot Token", type="password", placeholder="예: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ")
-            chat_id = st.text_input("👤 텔레그램 Chat ID", placeholder="예: 987654321")
-            submit_btn = st.form_submit_button("🚀 납기 임박 리스트 텔레그램으로 전송하기")
+        with st.form("teams_form"):
+            webhook_url = st.text_input("🔗 팀즈 웹훅 URL (Webhook URL)", type="password", placeholder="https://outlook.office.com/webhook/...")
+            submit_btn = st.form_submit_button("🚀 납기 임박 리스트 팀즈 채널로 전송하기")
             
             if submit_btn:
-                if not bot_token or not chat_id:
-                    st.error("Bot Token과 Chat ID를 모두 입력해주세요.")
+                if not webhook_url:
+                    st.error("팀즈 웹훅 URL을 입력해주세요.")
                 else:
                     try:
                         if date_col and date_col in df.columns:
@@ -178,16 +177,15 @@ try:
                                 s = row.get(ship_col, '출하처 없음')
                                 p = row.get(product_col, '제품명 없음')
                                 d = str(row.get(date_col, ''))[:10]
-                                msg += f"• 출하처: {s}\n  제품: {p}\n  납기: {d}\n\n"
+                                msg += f"• 출하처: {s} | 제품: {p} | 납기: {d}\n"
                         
-                        tg_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-                        payload = {"chat_id": chat_id, "text": msg}
-                        res = requests.post(tg_url, json=payload)
+                        payload = {"text": msg}
+                        res = requests.post(webhook_url, json=payload)
                         
                         if res.status_code == 200:
-                            st.success("✅ 텔레그램 알림이 성공적으로 전송되었습니다!")
+                            st.success("✅ 팀즈 채널로 알림이 성공적으로 전송되었습니다!")
                         else:
-                            st.error(f"❌ 전송 실패 (오류 코드: {res.status_code}) - 토큰과 Chat ID를 확인해주세요.")
+                            st.error(f"❌ 전송 실패 (오류 코드: {res.status_code}) - 웹훅 URL을 다시 확인해주세요.")
                     except Exception as ex:
                         st.error(f"전송 중 오류 발생: {ex}")
 
