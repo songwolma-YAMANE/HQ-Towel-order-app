@@ -11,7 +11,16 @@ url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
 @st.cache_data(ttl=60)
 def load_data():
-    df = pd.read_csv(url)
+    # 시트 상단의 제목이나 빈 행을 자동으로 건너뛰고 '출하처'가 있는 행을 찾아 제목으로 지정
+    df_temp = pd.read_csv(url, header=None)
+    header_row = 0
+    for i in range(len(df_temp)):
+        row_str = str(df_temp.iloc[i].values)
+        if '출하처' in row_str or 'SHIPMENT' in row_str:
+            header_row = i
+            break
+    
+    df = pd.read_csv(url, header=header_row)
     return df
 
 try:
