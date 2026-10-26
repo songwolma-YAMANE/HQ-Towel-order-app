@@ -211,7 +211,7 @@ try:
                 st.dataframe(format_df_dates(overdue_df)[disp_cols], use_container_width=True)
 
         if imminent_d7 > 0:
-            st.warning(f"🚨 **[필독] 향후 7일 이내에 출고/납기가 도래하는 긴급 오더가 총 {imminent_d7}건 있습니다. 우선적으로 공정을 확인해 주세요!**")
+            st.warning(f"🚨 **[필독] 향후 7일 이내에 출고/납기가 도래하는 긴급 오더가 총 {imminent_d7}건 있습니다.**")
         
         with st.expander(f"🚨 [집중 관리] 7일 이내 납기 임박 오더 ({imminent_d7}건)", expanded=True):
             if not imminent_d7_df.empty:
@@ -455,75 +455,4 @@ try:
         st.info("💡 Enter your Teams Channel Webhook URL to dispatch schedule alerts.")
         
         with st.form("teams_form"):
-            webhook_url = st.text_input("🔗 Teams Webhook URL", type="password", placeholder="https://outlook.office.com/webhook/...")
-            submit_btn = st.form_submit_button("🚀 Send Full Schedule to Teams Channel")
-            
-            if submit_btn:
-                if not webhook_url:
-                    st.error("Please enter the Teams Webhook URL.")
-                else:
-                    try:
-                        if date_col and date_col in df.columns:
-                            df_d7 = df[(df[date_col] >= today) & (df[date_col] <= today + timedelta(days=7))]
-                            df_d30 = df[(df[date_col] > today + timedelta(days=7)) & (df[date_col] <= today + timedelta(days=30))]
-                            df_d60 = df[(df[date_col] > today + timedelta(days=30)) & (df[date_col] <= today + timedelta(days=60))]
-                        else:
-                            df_d7, df_d30, df_d60 = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-                            
-                        msg = "📦 [HQ Textile Order Schedule Report]\n\n"
-                        
-                        msg += f"🚨 [Imminent within 7 Days] ({len(df_d7)} orders)\n"
-                        if df_d7.empty:
-                            msg += "• None\n\n"
-                        else:
-                            for idx, row in df_d7.iterrows():
-                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
-                            msg += "\n"
-
-                        msg += f"📅 [Expected within 30 Days] ({len(df_d30)} orders)\n"
-                        if df_d30.empty:
-                            msg += "• None\n\n"
-                        else:
-                            for idx, row in df_d30.iterrows():
-                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
-                            msg += "\n"
-
-                        msg += f"🗓️ [Expected within 60 Days] ({len(df_d60)} orders)\n"
-                        if df_d60.empty:
-                            msg += "• None\n"
-                        else:
-                            for idx, row in df_d60.iterrows():
-                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
-                        
-                        payload = {
-                            "type": "message",
-                            "attachments": [
-                                {
-                                    "contentType": "application/vnd.microsoft.card.adaptive",
-                                    "content": {
-                                        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                                        "type": "AdaptiveCard",
-                                        "version": "1.2",
-                                        "body": [
-                                            {
-                                                "type": "TextBlock",
-                                                "text": msg,
-                                                "wrap": True
-                                            }
-                                        ]
-                                    }
-                                }
-                            ]
-                        }
-
-                        res = requests.post(webhook_url, json=payload)
-                        
-                        if res.status_code in [200, 202]:
-                            st.success("✅ Schedule alert successfully sent to Teams channel!")
-                        else:
-                            st.error(f"❌ Failed (Error Code: {res.status_code}) - Please check your Webhook URL.")
-                    except Exception as ex:
-                        st.error(f"Error during transmission: {ex}")
-
-except Exception as e:
-    st.error(f"Error loading data: {e}")
+            webhook_url = st.text_input("🔗 Teams Webhook URL", type="password", placeholder="
