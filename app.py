@@ -123,6 +123,14 @@ try:
     product_col = find_col(['제품명', 'KOREAN NAME'])
     completed_col = find_col(['출고 완료', '출고완료'])
 
+    # 화면 출력용 날짜 포맷 함수 (00:00:00 제거)
+    def format_df_dates(input_df):
+        d_df = input_df.copy()
+        if date_col and date_col in d_df.columns:
+            d_df[date_col] = pd.to_datetime(d_df[date_col], errors='coerce').dt.strftime('%Y-%m-%d').fillna('')
+            d_df[date_col] = d_df[date_col].replace('NaT', '')
+        return d_df
+
     if 'order_memos' not in st.session_state:
         st.session_state.order_memos = {}
         
@@ -197,14 +205,14 @@ try:
             st.error(f"🔥 **[긴급 경고] 납기일이 지났으나 아직 출고되지 않은 오더가 총 {overdue_count}건 있습니다! 확인이 필요합니다.**")
             with st.expander(f"🔥 납기 지연 오더 상세 보기 ({overdue_count}건)", expanded=True):
                 disp_cols = [c for c in [ship_col, agency_col, product_col, 'ORDER PCS', date_col, completed_col] if c and c in df.columns]
-                st.dataframe(overdue_df[disp_cols], use_container_width=True)
+                st.dataframe(format_df_dates(overdue_df)[disp_cols], use_container_width=True)
 
         with st.expander(f"🚨 7 Days Imminent ({imminent_d7})", expanded=False):
             if date_col and date_col in df.columns:
                 df_d7 = df[(df[date_col] >= today) & (df[date_col] <= target_d7)]
                 if not df_d7.empty:
                     disp_cols = [c for c in [ship_col, agency_col, product_col, 'ORDER PCS', date_col, completed_col] if c and c in df.columns]
-                    st.dataframe(df_d7[disp_cols], use_container_width=True)
+                    st.dataframe(format_df_dates(df_d7)[disp_cols], use_container_width=True)
                 else:
                     st.success("No imminent orders within 7 days.")
 
@@ -213,7 +221,7 @@ try:
                 df_d30 = df[(df[date_col] > target_d7) & (df[date_col] <= target_d30)]
                 if not df_d30.empty:
                     disp_cols = [c for c in [ship_col, agency_col, product_col, 'ORDER PCS', date_col, completed_col] if c and c in df.columns]
-                    st.dataframe(df_d30[disp_cols], use_container_width=True)
+                    st.dataframe(format_df_dates(df_d30)[disp_cols], use_container_width=True)
                 else:
                     st.info("No orders expected in this period.")
                 
@@ -255,13 +263,15 @@ try:
                     start_r, end_r = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
                     filtered_df = filtered_df[(filtered_df[date_col] >= start_r) & (filtered_df[date_col] <= end_r)]
 
-        # 🔥 가장 최신 날짜가 위로 오도록 내림차순(ascending=False) 정렬 적용
+        # 최신순 정렬 (내림차순)
         if date_col and date_col in filtered_df.columns:
             filtered_df = filtered_df.sort_values(by=date_col, ascending=False)
 
         st.markdown("### 📋 실시간 오더 편집 및 확인 에디터")
         st.info("💡 표 내부의 셀을 직접 클릭하여 수정하거나 상태를 확인하고, 변경 사항은 엑셀로 다운로드할 수 있습니다.")
-        edited_df = st.data_editor(filtered_df, use_container_width=True, num_rows="dynamic")
+        
+        # 에디터 출력 전 날짜 포맷 적용
+        edited_df = st.data_editor(format_df_dates(filtered_df), use_container_width=True, num_rows="dynamic")
 
         col_res1, col_res2 = st.columns([3, 1])
         with col_res1:
@@ -269,7 +279,7 @@ try:
         with col_res2:
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                edited_df.to_excel(writer, index=False, sheet_name='Orders')
+                format_df_dates(filtered_df).to_excel(writer, index=False, sheet_name='Orders')
             excel_data = output.getvalue()
             st.download_button(
                 label=t["excel_btn"],
@@ -294,7 +304,7 @@ try:
                 
                 st.markdown(f"### 🗓️ {selected_ym} 출고 예정 오더 리스트 (총 {len(month_df)}건)")
                 disp_cols = [c for c in [date_col, ship_col, agency_col, product_col, 'ORDER PCS', completed_col] if c and c in df.columns]
-                st.dataframe(month_df[disp_cols], use_container_width=True)
+                st.dataframe(format_df_dates(month_df)[disp_cols], use_container_width=True)
             else:
                 st.warning("유효한 날짜 데이터가 없습니다.")
         else:
@@ -307,207 +317,3 @@ try:
         
         if agency_col and ship_col in df.columns:
             target_type = st.radio("조회 기준 선택", ["대리점 (Agency)", "출하처 (Shipment)"])
-            
-            if "대리점" in target_type:
-                selected_target = st.selectbox("조회할 대리점을 선택하세요", df[agency_col].dropna().unique())
-                target_df = df[df[agency_col] == selected_target]
-            else:
-                selected_target = st.selectbox("조회할 출하처를 선택하세요", df[ship_col].dropna().unique())
-                target_df = df[df[ship_col] == selected_target]
-                
-            if date_col in target_df.columns:
-                target_df = target_df.sort_values(by=date_col, ascending=False)
-                
-            st.markdown(f"---")
-            st.markdown(f"### 📊 [{selected_target}] 거래처 요약 정보")
-            
-            t_total = len(target_df)
-            t_completed = len(target_df[target_df[completed_col].astype(str).str.upper() == 'O']) if completed_col in target_df.columns else 0
-            t_rate = int((t_completed / t_total * 100) if t_total > 0 else 0)
-            
-            col_a1, col_a2, col_a3 = st.columns(3)
-            with col_a1:
-                st.metric("총 주문 건수", f"{t_total} 건")
-            with col_a2:
-                st.metric("출고 완료 건수", f"{t_completed} 건")
-            with col_a3:
-                st.metric("출고 달성률", f"{t_rate}%")
-                
-            st.markdown("#### 상세 주문 이력")
-            st.dataframe(target_df, use_container_width=True)
-        else:
-            st.warning("대리점 또는 출하처 컬럼을 찾을 수 없습니다.")
-
-    # 4. 메뉴 4: 통계 및 거래처 분석
-    elif menu == t["menu_4"]:
-        st.subheader("📈 대리점별 및 품목별 수주 분석")
-        
-        col_st1, col_st2 = st.columns(2)
-        with col_st1:
-            st.markdown("### Top 10 Agencies")
-            if agency_col and agency_col in df.columns:
-                agency_counts = df[agency_col].value_counts().head(10)
-                st.bar_chart(agency_counts)
-            else:
-                st.info("Agency column not found.")
-
-        with col_st2:
-            st.markdown("### Top 10 Shipments")
-            if ship_col and ship_col in df.columns:
-                ship_counts = df[ship_col].value_counts().head(10)
-                st.bar_chart(ship_counts)
-            else:
-                st.info("Shipment column not found.")
-
-        st.markdown("---")
-        st.subheader("Monthly Order Receipt Analysis")
-        date_rcv_col = find_col(['발주서 수령', '발주서'])
-        if date_rcv_col and date_rcv_col in df.columns:
-            df['수령_월'] = pd.to_datetime(df[date_rcv_col], errors='coerce').dt.to_period('M').astype(str)
-            monthly_counts = df['수령_월'].value_counts().sort_index()
-            st.bar_chart(monthly_counts)
-        else:
-            st.info("Receipt date column not found.")
-
-    # 5. 메뉴 5: 실무자 메모 및 특이사항
-    elif menu == t["menu_5"]:
-        st.subheader("📝 오더별 실무자 메모 및 특이사항 관리")
-        st.info("💡 특정 오더에 대한 특이사항(예: 납기 연기 사유, 원단 확인 등)을 기록하고 팀원들과 공유할 수 있습니다.")
-        
-        if ship_col and product_col in df.columns:
-            df['오더표시'] = df.index.astype(str) + " | Ship: " + df[ship_col].astype(str) + " | Product: " + df[product_col].astype(str)
-            selected_order_label = st.selectbox("Select an order to add a memo", df['오더표시'].tolist())
-            
-            selected_idx = int(selected_order_label.split(" | ")[0])
-            row_data = df.loc[selected_idx]
-            
-            st.write("---")
-            st.markdown("#### Selected Order Details")
-            col_m1, col_m2, col_m3 = st.columns(3)
-            with col_m1:
-                st.write(f"**Shipment:** {row_data.get(ship_col, '')}")
-            with col_m2:
-                st.write(f"**Agency:** {row_data.get(agency_col, '')}")
-            with col_m3:
-                d_val = str(row_data.get(date_col, ''))[:10]
-                st.write(f"**Delivery 1:** {d_val}")
-            
-            current_memo = st.session_state.order_memos.get(selected_idx, "")
-            memo_input = st.text_area("✍️ Enter Notes / Memo", value=current_memo, placeholder="e.g., Delayed due to fabric stock")
-            
-            if st.button("💾 Save Memo"):
-                st.session_state.order_memos[selected_idx] = memo_input
-                st.session_state.audit_logs.insert(0, {
-                    "Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "Action": "Memo Saved",
-                    "Details": f"Order #{selected_idx} ({row_data.get(ship_col, '')})"
-                })
-                st.success("✅ Memo saved successfully!")
-                
-            st.markdown("---")
-            st.markdown("### 📋 All Saved Memos")
-            if st.session_state.order_memos:
-                memo_list = []
-                for idx, m in st.session_state.order_memos.items():
-                    r = df.loc[idx]
-                    memo_list.append({
-                        "Index": idx,
-                        "Shipment": r.get(ship_col, ''),
-                        "Product": r.get(product_col, ''),
-                        "Memo": m
-                    })
-                st.dataframe(pd.DataFrame(memo_list), use_container_width=True)
-            else:
-                st.info("No memos recorded yet.")
-        else:
-            st.warning("Required columns missing for memo feature.")
-
-    # 6. 메뉴 6: 변경 이력 로그 (Audit Trail)
-    elif menu == t["menu_6"]:
-        st.subheader("📜 시스템 변경 이력 로그 (Audit Trail)")
-        st.info("💡 실무자들이 메모를 작성하거나 주요 작업을 수행한 이력이 시간순으로 자동 기록됩니다.")
-        
-        if st.session_state.audit_logs:
-            audit_df = pd.DataFrame(st.session_state.audit_logs)
-            st.dataframe(audit_df, use_container_width=True)
-        else:
-            st.info("아직 기록된 변경 이력이 없습니다. 메모를 저장하거나 작업을 수행하면 여기에 기록됩니다.")
-
-    # 7. 메뉴 7: 팀즈 알림 전송 (관리자 전용)
-    elif menu == t["menu_7"] and is_admin:
-        st.subheader("💬 Microsoft Teams Schedule Alert Dispatch")
-        st.info("💡 Enter your Teams Channel Webhook URL to dispatch schedule alerts.")
-        
-        with st.form("teams_form"):
-            webhook_url = st.text_input("🔗 Teams Webhook URL", type="password", placeholder="https://outlook.office.com/webhook/...")
-            submit_btn = st.form_submit_button("🚀 Send Full Schedule to Teams Channel")
-            
-            if submit_btn:
-                if not webhook_url:
-                    st.error("Please enter the Teams Webhook URL.")
-                else:
-                    try:
-                        if date_col and date_col in df.columns:
-                            df_d7 = df[(df[date_col] >= today) & (df[date_col] <= today + timedelta(days=7))]
-                            df_d30 = df[(df[date_col] > today + timedelta(days=7)) & (df[date_col] <= today + timedelta(days=30))]
-                            df_d60 = df[(df[date_col] > today + timedelta(days=30)) & (df[date_col] <= today + timedelta(days=60))]
-                        else:
-                            df_d7, df_d30, df_d60 = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-                            
-                        msg = "📦 [HQ Textile Order Schedule Report]\n\n"
-                        
-                        msg += f"🚨 [Imminent within 7 Days] ({len(df_d7)} orders)\n"
-                        if df_d7.empty:
-                            msg += "• None\n\n"
-                        else:
-                            for idx, row in df_d7.iterrows():
-                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
-                            msg += "\n"
-
-                        msg += f"📅 [Expected within 30 Days] ({len(df_d30)} orders)\n"
-                        if df_d30.empty:
-                            msg += "• None\n\n"
-                        else:
-                            for idx, row in df_d30.iterrows():
-                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
-                            msg += "\n"
-
-                        msg += f"🗓️ [Expected within 60 Days] ({len(df_d60)} orders)\n"
-                        if df_d60.empty:
-                            msg += "• None\n"
-                        else:
-                            for idx, row in df_d60.iterrows():
-                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
-                        
-                        payload = {
-                            "type": "message",
-                            "attachments": [
-                                {
-                                    "contentType": "application/vnd.microsoft.card.adaptive",
-                                    "content": {
-                                        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                                        "type": "AdaptiveCard",
-                                        "version": "1.2",
-                                        "body": [
-                                            {
-                                                "type": "TextBlock",
-                                                "text": msg,
-                                                "wrap": True
-                                            }
-                                        ]
-                                    }
-                                }
-                            ]
-                        }
-
-                        res = requests.post(webhook_url, json=payload)
-                        
-                        if res.status_code in [200, 202]:
-                            st.success("✅ Schedule alert successfully sent to Teams channel!")
-                        else:
-                            st.error(f"❌ Failed (Error Code: {res.status_code}) - Please check your Webhook URL.")
-                    except Exception as ex:
-                        st.error(f"Error during transmission: {ex}")
-
-except Exception as e:
-    st.error(f"Error loading data: {e}")
