@@ -392,4 +392,158 @@ try:
             memo_input = st.text_area("✍️ Enter Notes / Memo", value=current_memo, placeholder="e.g., Delayed due to fabric stock")
             
             if st.button("💾 Save Memo"):
-                st.session_state.
+                st.session_state.order_memos[selected_idx] = memo_input
+                st.session_state.audit_logs.insert(0, {
+                    "Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "Action": "Memo Saved",
+                    "Details": f"Order #{selected_idx} ({row_data.get(ship_col, '')})"
+                })
+                st.success("✅ Memo saved successfully!")
+                
+            st.markdown("---")
+            st.markdown("### 📋 All Saved Memos")
+            if st.session_state.order_memos:
+                memo_list = []
+                for idx, m in st.session_state.order_memos.items():
+                    r = df.loc[idx]
+                    memo_list.append({
+                        "Index": idx,
+                        "Shipment": r.get(ship_col, ''),
+                        "Product": r.get(product_col, ''),
+                        "Memo": m
+                    })
+                st.dataframe(pd.DataFrame(memo_list), use_container_width=True)
+            else:
+                st.info("No memos recorded yet.")
+        else:
+            st.warning("Required columns missing for memo feature.")
+
+    # 6. 메뉴 6: 변경 이력 로그 (Audit Trail)
+    elif menu == t["menu_6"]:
+        st.subheader("📜 시스템 변경 이력 로그 (Audit Trail)")
+        st.info("💡 실무자들이 메모를 작성하거나 주요 작업을 수행한 이력이 시간순으로 자동 기록됩니다.")
+        
+        if st.session_state.audit_logs:
+            audit_df = pd.DataFrame(st.session_state.audit_logs)
+            st.dataframe(audit_df, use_container_width=True)
+        else:
+            st.info("아직 기록된 변경 이력이 없습니다. 메모를 저장하거나 작업을 수행하면 여기에 기록됩니다.")
+
+    # 7. 메뉴 7: 경영진 보고서 & PDF 인쇄
+    elif menu == t["menu_7"]:
+        st.subheader("📄 경영진 보고용 종합 요약 리포트 (PDF 인쇄 가능)")
+        st.info("💡 아래의 '리포트 인쇄 및 PDF 저장' 버튼을 누르면, 브라우저의 인쇄 창이 열리며 깔끔한 PDF 파일로 즉시 저장할 수 있습니다.")
+        
+        total_l = len(df)
+        comp_c = len(df[df[completed_col].astype(str).str.upper() == 'O']) if completed_col in df.columns else 0
+        comp_r = int((comp_c / total_l * 100) if total_l > 0 else 0)
+        over_c = len(df[(df[date_col] < today) & (df[completed_col].astype(str).str.upper() != 'O')]) if date_col in df.columns else 0
+
+        report_html = f"""
+        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 800px; margin: auto; border: 1px solid #ddd; border-radius: 8px;">
+            <h2 style="text-align: center; color: #1E3A8A;">📦 본사 문직 제품 수주 및 출고 관리 경영진 보고서</h2>
+            <p style="text-align: center; color: #666; font-size: 0.9rem;">출력 일시: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <hr style="border: 0; border-top: 1px solid #ccc; margin: 20px 0;">
+            
+            <h3>1. 핵심 요약 지표 (Executive Summary)</h3>
+            <ul style="font-size: 1.1rem; line-height: 1.6;">
+                <li><b>전체 수주 건수:</b> {total_l:,} 건</li>
+                <li><b>출고 완료 건수:</b> {comp_c:,} 건 ({comp_r}%)</li>
+                <li><b>납기 지연 (Overdue):</b> <span style="color: red; font-weight: bold;">{over_c} 건</span></li>
+            </ul>
+            
+            <h3>2. 시스템 현황 및 특이사항</h3>
+            <p>본 대시보드는 실시간 구글 스프레드시트와 연동되어 사내 SCM 프로세스를 투명하게 관리하고 있으며, 팀즈 채널 자동 알림 및 실무자 메모 기능을 통해 부서 간 협업 효율성을 극대화하고 있습니다.</p>
+            
+            <div style="margin-top: 40px; text-align: right;">
+                <p><b>송월(주) 문직사업본부</b></p>
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <button onclick="window.print()" style="background-color: #1E3A8A; color: white; padding: 12px 24px; font-size: 1rem; border: none; border-radius: 5px; cursor: pointer;">
+                🖨️ 인쇄 및 PDF로 저장하기 (Print / Save PDF)
+            </button>
+        </div>
+        """
+        
+        components.html(report_html, height=600, scrolling=True)
+
+    # 8. 메뉴 8: 팀즈 알림 전송 (관리자 전용)
+    elif menu == t["menu_8"] and is_admin:
+        st.subheader("💬 Microsoft Teams Schedule Alert Dispatch")
+        st.info("💡 Enter your Teams Channel Webhook URL to dispatch schedule alerts.")
+        
+        with st.form("teams_form"):
+            webhook_url = st.text_input("🔗 Teams Webhook URL", type="password", placeholder="https://outlook.office.com/webhook/...")
+            submit_btn = st.form_submit_button("🚀 Send Full Schedule to Teams Channel")
+            
+            if submit_btn:
+                if not webhook_url:
+                    st.error("Please enter the Teams Webhook URL.")
+                else:
+                    try:
+                        if date_col and date_col in df.columns:
+                            df_d7 = df[(df[date_col] >= today) & (df[date_col] <= today + timedelta(days=7))]
+                            df_d30 = df[(df[date_col] > today + timedelta(days=7)) & (df[date_col] <= today + timedelta(days=30))]
+                            df_d60 = df[(df[date_col] > today + timedelta(days=30)) & (df[date_col] <= today + timedelta(days=60))]
+                        else:
+                            df_d7, df_d30, df_d60 = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+                            
+                        msg = "📦 [HQ Textile Order Schedule Report]\n\n"
+                        
+                        msg += f"🚨 [Imminent within 7 Days] ({len(df_d7)} orders)\n"
+                        if df_d7.empty:
+                            msg += "• None\n\n"
+                        else:
+                            for idx, row in df_d7.iterrows():
+                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
+                            msg += "\n"
+
+                        msg += f"📅 [Expected within 30 Days] ({len(df_d30)} orders)\n"
+                        if df_d30.empty:
+                            msg += "• None\n\n"
+                        else:
+                            for idx, row in df_d30.iterrows():
+                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
+                            msg += "\n"
+
+                        msg += f"🗓️ [Expected within 60 Days] ({len(df_d60)} orders)\n"
+                        if df_d60.empty:
+                            msg += "• None\n"
+                        else:
+                            for idx, row in df_d60.iterrows():
+                                msg += f"• {row.get(ship_col, '')} | {row.get(product_col, '')} | {str(row.get(date_col, ''))[:10]}\n"
+                        
+                        payload = {
+                            "type": "message",
+                            "attachments": [
+                                {
+                                    "contentType": "application/vnd.microsoft.card.adaptive",
+                                    "content": {
+                                        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                                        "type": "AdaptiveCard",
+                                        "version": "1.2",
+                                        "body": [
+                                            {
+                                                "type": "TextBlock",
+                                                "text": msg,
+                                                "wrap": True
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+
+                        res = requests.post(webhook_url, json=payload)
+                        
+                        if res.status_code in [200, 202]:
+                            st.success("✅ Schedule alert successfully sent to Teams channel!")
+                        else:
+                            st.error(f"❌ Failed (Error Code: {res.status_code}) - Please check your Webhook URL.")
+                    except Exception as ex:
+                        st.error(f"Error during transmission: {ex}")
+
+except Exception as e:
+    st.error(f"Error loading data: {e}")
