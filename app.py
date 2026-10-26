@@ -3,7 +3,6 @@ import pandas as pd
 from datetime import datetime, timedelta
 import requests
 import io
-import streamlit.components.v1 as components
 
 # 페이지 설정 (와이드 레이아웃)
 st.set_page_config(page_title="본사 문직 수주/출고 관리 시스템", layout="wide")
@@ -45,8 +44,7 @@ LANG_DICT = {
         "menu_4": "📈 통계 및 거래처 분석",
         "menu_5": "📝 실무자 메모 및 특이사항",
         "menu_6": "📜 변경 이력 로그 (Audit Trail)",
-        "menu_7": "📄 경영진 보고서 & PDF 인쇄",
-        "menu_8": "💬 팀즈 알림 전송",
+        "menu_7": "💬 팀즈 알림 전송",
         "total_orders": "📋 전체 수주 건수",
         "overdue_orders": "🔥 납기 지연 (Overdue)",
         "d7_imminent": "🚨 7일 이내 납기",
@@ -71,8 +69,7 @@ LANG_DICT = {
         "menu_4": "📈 Statistics & Partner Analysis",
         "menu_5": "📝 Staff Memos & Notes",
         "menu_6": "📜 Audit Trail & Change Logs",
-        "menu_7": "📄 Management Report & PDF Print",
-        "menu_8": "💬 Send Teams Alert",
+        "menu_7": "💬 Send Teams Alert",
         "total_orders": "📋 Total Orders",
         "overdue_orders": "🔥 Overdue Orders",
         "d7_imminent": "🚨 Due within 7 Days",
@@ -141,13 +138,13 @@ try:
     
     if is_admin:
         st.sidebar.success(t["admin_success"])
-        menu_options = [t["menu_1"], t["menu_2"], t["menu_3"], t["menu_4"], t["menu_5"], t["menu_6"], t["menu_7"], t["menu_8"]]
+        menu_options = [t["menu_1"], t["menu_2"], t["menu_3"], t["menu_4"], t["menu_5"], t["menu_6"], t["menu_7"]]
     else:
         if input_pw:
             st.sidebar.error(t["pw_error"])
         else:
             st.sidebar.info(t["general_info"])
-        menu_options = [t["menu_1"], t["menu_2"], t["menu_3"], t["menu_4"], t["menu_5"], t["menu_6"], t["menu_7"]]
+        menu_options = [t["menu_1"], t["menu_2"], t["menu_3"], t["menu_4"], t["menu_5"], t["menu_6"]]
 
     menu = st.sidebar.radio("Menu", menu_options)
 
@@ -429,48 +426,8 @@ try:
         else:
             st.info("아직 기록된 변경 이력이 없습니다. 메모를 저장하거나 작업을 수행하면 여기에 기록됩니다.")
 
-    # 7. 메뉴 7: 경영진 보고서 & PDF 인쇄
-    elif menu == t["menu_7"]:
-        st.subheader("📄 경영진 보고용 종합 요약 리포트 (PDF 인쇄 가능)")
-        st.info("💡 아래의 '리포트 인쇄 및 PDF 저장' 버튼을 누르면, 브라우저의 인쇄 창이 열리며 깔끔한 PDF 파일로 즉시 저장할 수 있습니다.")
-        
-        total_l = len(df)
-        comp_c = len(df[df[completed_col].astype(str).str.upper() == 'O']) if completed_col in df.columns else 0
-        comp_r = int((comp_c / total_l * 100) if total_l > 0 else 0)
-        over_c = len(df[(df[date_col] < today) & (df[completed_col].astype(str).str.upper() != 'O')]) if date_col in df.columns else 0
-
-        report_html = f"""
-        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 800px; margin: auto; border: 1px solid #ddd; border-radius: 8px;">
-            <h2 style="text-align: center; color: #1E3A8A;">📦 본사 문직 제품 수주 및 출고 관리 경영진 보고서</h2>
-            <p style="text-align: center; color: #666; font-size: 0.9rem;">출력 일시: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-            <hr style="border: 0; border-top: 1px solid #ccc; margin: 20px 0;">
-            
-            <h3>1. 핵심 요약 지표 (Executive Summary)</h3>
-            <ul style="font-size: 1.1rem; line-height: 1.6;">
-                <li><b>전체 수주 건수:</b> {total_l:,} 건</li>
-                <li><b>출고 완료 건수:</b> {comp_c:,} 건 ({comp_r}%)</li>
-                <li><b>납기 지연 (Overdue):</b> <span style="color: red; font-weight: bold;">{over_c} 건</span></li>
-            </ul>
-            
-            <h3>2. 시스템 현황 및 특이사항</h3>
-            <p>본 대시보드는 실시간 구글 스프레드시트와 연동되어 사내 SCM 프로세스를 투명하게 관리하고 있으며, 팀즈 채널 자동 알림 및 실무자 메모 기능을 통해 부서 간 협업 효율성을 극대화하고 있습니다.</p>
-            
-            <div style="margin-top: 40px; text-align: right;">
-                <p><b>송월(주) 문직사업본부</b></p>
-            </div>
-        </div>
-        
-        <div style="text-align: center; margin-top: 30px;">
-            <button onclick="window.print()" style="background-color: #1E3A8A; color: white; padding: 12px 24px; font-size: 1rem; border: none; border-radius: 5px; cursor: pointer;">
-                🖨️ 인쇄 및 PDF로 저장하기 (Print / Save PDF)
-            </button>
-        </div>
-        """
-        
-        components.html(report_html, height=600, scrolling=True)
-
-    # 8. 메뉴 8: 팀즈 알림 전송 (관리자 전용)
-    elif menu == t["menu_8"] and is_admin:
+    # 7. 메뉴 7: 팀즈 알림 전송 (관리자 전용)
+    elif menu == t["menu_7"] and is_admin:
         st.subheader("💬 Microsoft Teams Schedule Alert Dispatch")
         st.info("💡 Enter your Teams Channel Webhook URL to dispatch schedule alerts.")
         
