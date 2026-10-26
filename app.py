@@ -255,6 +255,10 @@ try:
                     start_r, end_r = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
                     filtered_df = filtered_df[(filtered_df[date_col] >= start_r) & (filtered_df[date_col] <= end_r)]
 
+        # 🔥 가장 최신 날짜가 위로 오도록 내림차순(ascending=False) 정렬 적용
+        if date_col and date_col in filtered_df.columns:
+            filtered_df = filtered_df.sort_values(by=date_col, ascending=False)
+
         st.markdown("### 📋 실시간 오더 편집 및 확인 에디터")
         st.info("💡 표 내부의 셀을 직접 클릭하여 수정하거나 상태를 확인하고, 변경 사항은 엑셀로 다운로드할 수 있습니다.")
         edited_df = st.data_editor(filtered_df, use_container_width=True, num_rows="dynamic")
@@ -286,7 +290,7 @@ try:
             
             if ym_list:
                 selected_ym = st.selectbox("조회할 연도-월 선택", ym_list)
-                month_df = valid_df[valid_df['YearMonth'] == selected_ym].sort_values(by=date_col)
+                month_df = valid_df[valid_df['YearMonth'] == selected_ym].sort_values(by=date_col, ascending=False)
                 
                 st.markdown(f"### 🗓️ {selected_ym} 출고 예정 오더 리스트 (총 {len(month_df)}건)")
                 disp_cols = [c for c in [date_col, ship_col, agency_col, product_col, 'ORDER PCS', completed_col] if c and c in df.columns]
@@ -310,6 +314,9 @@ try:
             else:
                 selected_target = st.selectbox("조회할 출하처를 선택하세요", df[ship_col].dropna().unique())
                 target_df = df[df[ship_col] == selected_target]
+                
+            if date_col in target_df.columns:
+                target_df = target_df.sort_values(by=date_col, ascending=False)
                 
             st.markdown(f"---")
             st.markdown(f"### 📊 [{selected_target}] 거래처 요약 정보")
