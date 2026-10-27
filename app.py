@@ -298,4 +298,217 @@ try:
         cols_to_drop = [c for c in editor_df.columns if '5차' in c or 'delivery 5' in c.lower()]
         editor_df = editor_df.drop(columns=cols_to_drop, errors='ignore')
 
-        edited_df = st.data_editor(format_df_dates(editor_df
+        edited_df = st.data_editor(format_df_dates(editor_df), use_container_width=True, num_rows="dynamic")
+
+        col_res1, col_res2 = st.columns([3, 1])
+        with col_res1:
+            st.write(f"Found **{len(edited_df):,}** orders.")
+        with col_res2:
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                format_df_dates(editor_df).to_excel(writer, index=False, sheet_name='Orders')
+            excel_data = output.getvalue()
+            st.download_button(
+                label=t["excel_btn"],
+                data=excel_data,
+                file_name=f"Order_List_{datetime.today().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    # 2. 메뉴 2: 출고 캘린더 뷰
+    elif menu == t["menu_2"]:
+        st.subheader("📅 월별 출고 캘린더 및 일자별 스케줄 뷰")
+        if date_col in df.columns:
+            valid_df = df.dropna(subset=[date_col]).copy()
+            valid_df['YearMonth'] = valid_df[date_col].dt.to_period('M').astype(str)
+            ym_list = sorted(valid_df['YearMonth'].unique(), reverse=True)
+            
+            if ym_list:
+                selected_ym = st.selectbox("조회할 연도-월 선택", ym_list)
+                month_df = valid_df[valid_df['YearMonth'] == selected_ym].sort_values(by=date_col, ascending=False)
+                st.markdown(f"### 🗓️ {selected_ym} 출고 예정 오더 리스트 (총 {len(month_df)}건)")
+                disp_cols = [c for c in [date_col, ship_col, agency_col, product_col, 'ORDER PCS', completed_col] if c and c in df.columns]
+                st.dataframe(format_df_dates(month_df)[disp_cols], use_container_width=True)
+            else:
+                st.warning("유효한 날짜 데이터가 없습니다.")
+        else:
+            st.warning("날짜 컬럼을 찾을 수 없습니다.")
+
+    # 3. 메뉴 3: 대리점/출하처별 상세 이력 조회
+    elif menu == t["menu_3"]:
+        st.subheader("🏢 대리점 및 출하처별 상세 이력 조회")
+        if agency_col and ship_col in df.columns:
+            target_type = st.radio("조회 기준 선택", ["대리점 (Agency)", "출하처 (Shipment)"])
+            if "대리점" in target_type:
+                selected_target = st.selectbox("조회할 대리점을 선택하세요", df[agency_col].dropna().unique())
+                target_df = df[df[agency_col] == selected_target]
+            else:
+                selected_target = st.selectbox("조회할 출하처를 선택하세요", df[ship_col].dropna().unique())
+                target_df = df[df[ship_col] == selected_target]
+                
+            if date_col in target_df.columns:
+                target_df = target_df.sort_values(by=date_col, ascending=False)
+                
+            st.markdown(f"---")
+            st.markdown(f"### 📊 [{selected_target}] 거래처 요약 정보")
+            t_total = len(target_df)
+            t_completed = len(target_df[target_df[completed_col].astype(str).str.upper() == 'O']) if completed_col in target_df.columns else 0
+            t_rate = int((t_completed / t_total * 100) if t_total > 0 else 0)
+            
+            col_a1, col_a2, col_a3 = st.columns(3)
+            with col_a1:
+                st.metric("총 주문 건수", f"{t_total} 건")
+            with col_a2:
+                st.metric("출고 완료 건수", f"{t_completed} 건")
+            with col_a3:
+                st.metric("출고 달성률", f"{t_rate}%")
+                
+            st.dataframe(format_df_dates(target_df), use_container_width=True)
+        else:
+            st.warning("대리점 또는 출하처 컬럼을 찾을 수 없습니다.")
+
+    # 4. 메뉴 4: 연도/월별 및 상세 비교 분석
+    elif menu == t["menu_4"]:
+        st.subheader("📈 연도별·월별 수주 비교 및 다차원 분석 대시보드")
+        st.info("💡 연도별, 월별, 제품명, 파일 번수, 사이즈 폭별 오더 건수, 총 중량(Kg), 총 수량(PCS)을 비교하고 전년/전월 대비 증감률(%)을 확인합니다.")
+
+        st.markdown("#### 🔍 상세 조건 검색 및 필터링")
+        f_col1, f_col2, f_col3 = st.columns(3)
+        
+        with f_col1:
+            p_keyword = st.text_input("제품명 검색 (부분 일치)", "")
+        with f_col2:
+            y_options = ["All"] + list(df[yarn_col].dropna().unique().astype(str)) if (yarn_col and yarn_col in df.columns) else ["All"]
+            selected_yarn = st.selectbox("파일 번수 (Yarn) 필터", y_options)
+        with f_col3:
+            w_options = ["All"] + list(df[width_col].dropna().unique().astype(str)) if (width_col and width_col in df.columns) else ["All"]
+            selected_width = st.selectbox("사이즈 폭 (cm/규격) 필터", w_options)
+
+        anal_df = df.copy()
+        if p_keyword:
+            if product_col and product_col in anal_df.columns:
+                anal_df = anal_df[anal_df[product_col].astype(str).str.contains(p_keyword, case=False, na=False)]
+        if selected_yarn != "All" and yarn_col and yarn_col in anal_df.columns:
+            anal_df = anal_df[anal_df[yarn_col].astype(str) == selected_yarn]
+        if selected_width != "All" and width_col and width_col in anal_df.columns:
+            anal_df = anal_df[anal_df[width_col].astype(str) == selected_width]
+
+        st.markdown("---")
+        
+        st.markdown("### 📅 1. 연도별 비교 분석 (건수 / 중량(Kg) / 수량(PCS))")
+        if '__YEAR' in anal_df.columns and len(anal_df[anal_df['__YEAR'] > 0]) > 0:
+            yearly_group = anal_df[anal_df['__YEAR'] > 0].groupby('__YEAR').agg(
+                오더건수=('__YEAR', 'count'),
+                총중량_Kg=('__KG_NUM', 'sum'),
+                총수량_PCS=('__PCS_NUM', 'sum')
+            ).reset_index().sort_values(by='__YEAR')
+
+            yearly_group['건수_증감률(%)'] = yearly_group['오더건수'].pct_change() * 100
+            yearly_group['중량_증감률(%)'] = yearly_group['총중량_Kg'].pct_change() * 100
+            yearly_group['수량_증감률(%)'] = yearly_group['총수량_PCS'].pct_change() * 100
+            yearly_group = yearly_group.fillna(0).round(1)
+
+            st.dataframe(yearly_group, use_container_width=True)
+            st.bar_chart(yearly_group.set_index('__YEAR')[['오더건수']])
+        else:
+            st.warning("유효한 연도 데이터가 없습니다.")
+
+        st.markdown("---")
+
+        st.markdown("### 📊 2. 월별 수주 비교 분석 (연도-월 기준)")
+        if '__MONTH' in anal_df.columns and len(anal_df[anal_df['__MONTH'] != 'NaT']) > 0:
+            monthly_group = anal_df[anal_df['__MONTH'] != 'NaT'].groupby('__MONTH').agg(
+                오더건수=('__MONTH', 'count'),
+                총중량_Kg=('__KG_NUM', 'sum'),
+                총수량_PCS=('__PCS_NUM', 'sum')
+            ).reset_index().sort_values(by='__MONTH')
+
+            monthly_group['전월대비_건수증감(%)'] = monthly_group['오더건수'].pct_change() * 100
+            monthly_group = monthly_group.fillna(0).round(1)
+
+            st.dataframe(monthly_group, use_container_width=True)
+            st.line_chart(monthly_group.set_index('__MONTH')[['오더건수']])
+        else:
+            st.warning("유효한 월별 데이터가 없습니다.")
+
+        st.markdown("---")
+
+        st.markdown("### 🔍 3. 세부 항목별(제품 / 번수 / 폭) 집계 비교")
+        tab1, tab2, tab3 = st.tabs(["🏷️ 제품별 비교", "🧵 파일 번수(Yarn)별 비교", "📏 사이즈 폭별 비교"])
+        
+        with tab1:
+            if product_col and product_col in anal_df.columns:
+                prod_summary = anal_df.groupby(product_col).agg(
+                    오더건수=(product_col, 'count'),
+                    총중량_Kg=('__KG_NUM', 'sum'),
+                    총수량_PCS=('__PCS_NUM', 'sum')
+                ).reset_index().sort_values(by='오더건수', ascending=False)
+                st.dataframe(prod_summary, use_container_width=True)
+            else:
+                st.info("제품명 컬럼을 찾을 수 없습니다.")
+                
+        with tab2:
+            if yarn_col and yarn_col in anal_df.columns:
+                yarn_summary = anal_df.groupby(yarn_col).agg(
+                    오더건수=(yarn_col, 'count'),
+                    총중량_Kg=('__KG_NUM', 'sum'),
+                    총수량_PCS=('__PCS_NUM', 'sum')
+                ).reset_index().sort_values(by='오더건수', ascending=False)
+                st.dataframe(yarn_summary, use_container_width=True)
+            else:
+                st.info("파일 번수(Yarn) 컬럼을 찾을 수 없습니다.")
+                
+        with tab3:
+            if width_col and width_col in anal_df.columns:
+                width_summary = anal_df.groupby(width_col).agg(
+                    오더건수=(width_col, 'count'),
+                    총중량_Kg=('__KG_NUM', 'sum'),
+                    총수량_PCS=('__PCS_NUM', 'sum')
+                ).reset_index().sort_values(by='오더건수', ascending=False)
+                st.dataframe(width_summary, use_container_width=True)
+            else:
+                st.info("사이즈 폭 컬럼을 찾을 수 없습니다.")
+
+    # 5. 메뉴 5: 실무자 메모 및 특이사항
+    elif menu == t["menu_5"]:
+        st.subheader("📝 오더별 실무자 메모 및 특이사항 관리")
+        if ship_col and product_col in df.columns:
+            df['오더표시'] = df.index.astype(str) + " | Ship: " + df[ship_col].astype(str) + " | Product: " + df[product_col].astype(str)
+            selected_order_label = st.selectbox("Select an order to add a memo", df['오더표시'].tolist())
+            selected_idx = int(selected_order_label.split(" | ")[0])
+            row_data = df.loc[selected_idx]
+            
+            st.write("---")
+            col_m1, col_m2, col_m3 = st.columns(3)
+            with col_m1:
+                st.write(f"**Shipment:** {row_data.get(ship_col, '')}")
+            with col_m2:
+                st.write(f"**Agency:** {row_data.get(agency_col, '')}")
+            with col_m3:
+                d_val = str(row_data.get(date_col, ''))[:10]
+                st.write(f"**Delivery 1:** {d_val}")
+            
+            current_memo = st.session_state.order_memos.get(selected_idx, "")
+            memo_input = st.text_area("✍️ Enter Notes / Memo", value=current_memo)
+            
+            if st.button("💾 Save Memo"):
+                st.session_state.order_memos[selected_idx] = memo_input
+                st.success("✅ Memo saved successfully!")
+                
+            st.markdown("### 📋 All Saved Memos")
+            if st.session_state.order_memos:
+                memo_list = [{"Index": idx, "Memo": m} for idx, m in st.session_state.order_memos.items()]
+                st.dataframe(pd.DataFrame(memo_list), use_container_width=True)
+            else:
+                st.info("No memos recorded yet.")
+
+    # 6. 메뉴 6: 변경 이력 로그 (Audit Trail)
+    elif menu == t["menu_6"]:
+        st.subheader("📜 시스템 변경 이력 로그 (Audit Trail)")
+        if st.session_state.audit_logs:
+            st.dataframe(pd.DataFrame(st.session_state.audit_logs), use_container_width=True)
+        else:
+            st.info("아직 기록된 변경 이력이 없습니다.")
+
+except Exception as e:
+    st.error(f"Error loading data: {e}")
