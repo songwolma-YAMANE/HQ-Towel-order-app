@@ -41,7 +41,7 @@ LANG_DICT = {
         "menu_1": "📊 종합 대시보드 & 지연/임박 알림",
         "menu_2": "📅 출고 캘린더 뷰",
         "menu_3": "🏢 대리점/출하처별 상세 이력",
-        "menu_4": "📈 연도/월별 및 상세 비교 분석 (New)",
+        "menu_4": "📈 연도/월별 및 상세 비교 분석",
         "menu_5": "📝 실무자 메모 및 특이사항",
         "menu_6": "📜 변경 이력 로그 (Audit Trail)",
         "total_orders": "📋 전체 수주 건수",
@@ -128,11 +128,11 @@ try:
     yarn_col = find_col(['yarn', '번수', '실'])
     width_col = find_col(['cm', '폭', '규격'])
 
-    # 숫자형 데이터 변환 전처리 (계산을 위해 쉼표 및 단위 제거)
+    # 숫자형 데이터 변환 전처리
     if pcs_col and pcs_col in df.columns:
         df['__PCS_NUM'] = pd.to_numeric(df[pcs_col].astype(str).str.replace(r'[^0-9.]', '', regex=True), errors='coerce').fillna(0)
     else:
-        df['__PCS_NUM'] = 1 # 컬럼이 없을 경우 기본 건수 단위
+        df['__PCS_NUM'] = 1
         
     if kg_col and kg_col in df.columns:
         df['__KG_NUM'] = pd.to_numeric(df[kg_col].astype(str).str.replace(r'[^0-9.]', '', regex=True), errors='coerce').fillna(0)
@@ -298,4 +298,4 @@ try:
         cols_to_drop = [c for c in editor_df.columns if '5차' in c or 'delivery 5' in c.lower()]
         editor_df = editor_df.drop(columns=cols_to_drop, errors='ignore')
 
-        edited_df = st.data_editor(
+        edited_df = st.data_editor(format_df_dates(editor_df
