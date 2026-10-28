@@ -51,9 +51,6 @@ LANG_DICT = {
         "menu_4": "📈 비교 분석",
         "menu_5": "📝 실무자 메모",
         "menu_6": "📜 변경 이력 로그",
-        "total_orders": "전체 수주 건수",
-        "overdue_orders": "납기 지연",
-        "d7_imminent": "7일 이내 납기",
         "search_box": "출하처 또는 제품명 검색",
         "agency_filter": "대리점 선택",
         "excel_btn": "엑셀로 다운로드",
@@ -78,9 +75,6 @@ LANG_DICT = {
         "menu_4": "📈 Comparative Analysis",
         "menu_5": "📝 Staff Memos",
         "menu_6": "📜 Audit Trail",
-        "total_orders": "Total Orders",
-        "overdue_orders": "Overdue Orders",
-        "d7_imminent": "Due within 7 Days",
         "search_box": "Search Shipment or Product",
         "agency_filter": "Agency Filter",
         "excel_btn": "Download Excel",
@@ -100,7 +94,7 @@ st.markdown(
     f'<div class="sub-header">{t["subtitle"]}</div>', unsafe_allow_html=True
 )
 
-# 구글 스프레드시트 링크 설정 (웹에 게시된 CSV 링크 또는 기본 export 링크)
+# 구글 스프레드시트 CSV 내보내기 링크
 url = "https://docs.google.com/spreadsheets/d/13Lp9gA3p8a_WstCQA9AyMrfzM8YTtqUpBV8Ryxzszjg/export?format=csv"
 
 
@@ -112,23 +106,24 @@ def load_data():
             " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
     }
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-
-    df_temp = pd.read_csv(io.BytesIO(response.content), header=None)
+    res = requests.get(url, headers=headers)
+    res.raise_for_status()
+    df_temp = pd.read_csv(io.BytesIO(res.content), header=None)
     header_row = 0
     for i in range(len(df_temp)):
         row_str = str(df_temp.iloc[i].values)
         if "출하처" in row_str or "SHIPMENT" in row_str or "제품명" in row_str:
             header_row = i
             break
-    df = pd.read_csv(io.BytesIO(response.content), header=header_row)
-    df.columns = df.columns.astype(str).str.strip()
-    return df
+    data_df = pd.read_csv(io.BytesIO(res.content), header=header_row)
+    data_df.columns = data_df.columns.astype(str).str.strip()
+    return data_df
 
 
+# 메인 실행부
 try:
     df = load_data()
+
 
     def find_col(keywords):
         for col in df.columns:
@@ -136,6 +131,7 @@ try:
                 if kw.lower() in col.lower():
                     return col
         return None
+
 
     date_col = find_col(["확정납기 1차", "DELIVERY 1", "납기"])
     date_rcv_col = find_col(["발주서 수령", "발주서"])
@@ -167,6 +163,3 @@ try:
                 df[kg_col].astype(str).str.replace(r"[^0-9.]", "", regex=True),
                 errors="coerce",
             )
-            .fillna(0)
-            .astype(float)
-        )
