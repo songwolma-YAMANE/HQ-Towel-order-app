@@ -75,7 +75,7 @@ st.markdown(
 )
 
 # 구글 스프레드시트 CSV 내보내기 링크
-url = "https://docs.google.com/spreadsheets/d/13Lp9gA3p8a_WstCQA9AyMrfzM8YTtqUpBV8Ryxzszjg/export?format=csv"
+url = "https://docs.google.com/spreadsheets/d/13Lp9gA3p8a_WstCQA9AyMrfzM8YTtqUpBV8Ryxzszjg/edit?pli=1&gid=351025401#gid=351025401/export?format=csv"
 
 
 @st.cache_data(ttl=30)
