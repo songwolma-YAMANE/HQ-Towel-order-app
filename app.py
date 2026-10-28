@@ -99,4 +99,113 @@ def load_data():
     res.raise_for_status()
     df_temp = pd.read_csv(io.BytesIO(res.content), header=None)
     header_row = 0
-    for i in range(
+    for i in range(len(df_temp)):
+        row_str = str(df_temp.iloc[i].values)
+        if "출하처" in row_str or "SHIPMENT" in row_str or "제품명" in row_str:
+            header_row = i
+            break
+    data_df = pd.read_csv(io.BytesIO(res.content), header=header_row)
+    data_df.columns = data_df.columns.astype(str).str.strip()
+    return data_df
+
+
+try:
+    df = load_data()
+
+
+    def find_col(keywords):
+        for col in df.columns:
+            for kw in keywords:
+                if kw.lower() in col.lower():
+                    return col
+        return None
+
+
+    date_col = find_col(["확정납기 1차", "DELIVERY 1", "납기"])
+    date_rcv_col = find_col(["발주서 수령", "발주서"])
+    agency_col = find_col(["대리점", "AGENCY"])
+    ship_col = find_col(["출하처", "SHIPMENT"])
+    product_col = find_col(["제품명", "KOREAN NAME"])
+    completed_col = find_col(["출고 완료", "출고완료"])
+
+    pcs_col = find_col(["order pcs", "pcs", "수량"])
+    kg_col = find_col(["order kg", "kg", "중량"])
+    yarn_col = find_col(["yarn", "번수", "실"])
+    width_col = find_col(["cm", "폭", "규격"])
+
+    if pcs_col and pcs_col in df.columns:
+        df["__PCS_NUM"] = pd.to_numeric(
+            df[pcs_col].astype(str).str.replace(r"[^0-9.]", "", regex=True),
+            errors="coerce",
+        ).fillna(0)
+    else:
+        df["__PCS_NUM"] = 1
+
+    if kg_col and kg_col in df.columns:
+        df["__KG_NUM"] = pd.to_numeric(
+            df[kg_col].astype(str).str.replace(r"[^0-9.]", "", regex=True),
+            errors="coerce",
+        ).fillna(0)
+    else:
+        df["__KG_NUM"] = 0
+
+
+    def format_df_dates(input_df):
+        d_df = input_df.copy()
+        if date_col and date_col in d_df.columns:
+            d_df[date_col] = (
+                pd.to_datetime(d_df[date_col], errors="coerce")
+                .dt.strftime("%Y-%m-%d")
+                .fillna("")
+            )
+            d_df[date_col] = d_df[date_col].replace("NaT", "")
+        return d_df
+
+
+    if "order_memos" not in st.session_state:
+        st.session_state.order_memos = {}
+    if "audit_logs" not in st.session_state:
+        st.session_state.audit_logs = {}
+
+    # 사이드바 보안 설정
+    st.sidebar.header(t["sec_menu"])
+    ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "songwol1234")
+    input_pw = st.sidebar.text_input(
+        t["pw_label"], type="password", placeholder=t["pw_placeholder"]
+    )
+    is_admin = input_pw == ADMIN_PASSWORD
+
+    if is_admin:
+        st.sidebar.success(t["admin_success"])
+    else:
+        if input_pw:
+            st.sidebar.error(t["pw_error"])
+        else:
+            st.sidebar.info(t["general_info"])
+
+    menu_options = [
+        t["menu_1"],
+        t["menu_2"],
+        t["menu_3"],
+        t["menu_4"],
+        t["menu_5"],
+        t["menu_6"],
+    ]
+    menu = st.sidebar.radio("Menu", menu_options)
+
+    today = pd.to_datetime(datetime.today().date())
+
+    base_date_for_stat = (
+        date_rcv_col if (date_rcv_col and date_rcv_col in df.columns) else date_col
+    )
+    if base_date_for_stat and base_date_for_stat in df.columns:
+        df["__PARSED_DATE"] = pd.to_datetime(df[base_date_for_stat], errors="coerce")
+        df["__YEAR"] = df["__PARSED_DATE"].dt.year.fillna(0).astype(int)
+        df["__MONTH"] = df["__PARSED_DATE"].dt.to_period("M").astype(str)
+
+    if date_col and date_col in df.columns:
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+
+    # 1. 메뉴 1: 종합 대시보드
+    if menu == t["menu_1"]:
+        target_d7 = today + timedelta(days
