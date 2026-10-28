@@ -429,40 +429,24 @@ try:
                 ).str.contains(search_query, na=False, case=False)
             filtered_df = filtered_df[cond]
 
-        if (
-            selected_agency != "All"
-            and agency_col
-            and agency_col in filtered_df.columns
-        ):
-            filtered_df = filtered_df[
-                filtered_df[agency_col] == selected_agency
-            ]
+        if selected_agency != "All" and agency_col and agency_col in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df[agency_col] == selected_agency]
 
         if use_date_filter and date_col in filtered_df.columns:
             valid_dates = filtered_df[date_col].dropna()
             if not valid_dates.empty:
                 min_d = valid_dates.min().date()
                 max_d = valid_dates.max().date()
-                date_range = st.date_input(
-                    "Select date range", [min_d, max_d]
-                )
+                date_range = st.date_input("Select date range", [min_d, max_d])
                 if len(date_range) == 2:
-                    start_r, end_r = pd.to_datetime(
-                        date_range[0]
-                    ), pd.to_datetime(date_range[1])
-                    filtered_df = filtered_df[
-                        (filtered_df[date_col] >= start_r)
-                        & (filtered_df[date_col] <= end_r)
-                    ]
+                    start_r, end_r = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+                    filtered_df = filtered_df[(filtered_df[date_col] >= start_r) & (filtered_df[date_col] <= end_r)]
 
         if date_col and date_col in filtered_df.columns:
             filtered_df = filtered_df.sort_values(by=date_col, ascending=False)
 
         st.markdown("### 📋 실시간 오더 편집 및 확인 에디터")
-        st.info(
-            "💡 표 내부의 셀을 직접 클릭하여 수정하거나 상태를 확인하고, 변경"
-            " 사항은 엑셀로 다운로드할 수 있습니다."
-        )
+        st.info("💡 표 내부의 셀을 직접 클릭하여 수정하거나 상태를 확인하고, 변경 사항은 엑셀로 다운로드할 수 있습니다.")
 
         editor_df = filtered_df.drop(
             columns=[
@@ -583,63 +567,4 @@ try:
             )
 
             col_a1, col_a2, col_a3 = st.columns(3)
-            with col_a1:
-                st.metric("총 주문 건수", f"{t_total} 건")
-            with col_a2:
-                st.metric("출고 완료 건수", f"{t_completed} 건")
-            with col_a3:
-                st.metric("출고 달성률", f"{t_rate}%")
-
-            st.dataframe(format_df_dates(target_df), use_container_width=True)
-        else:
-            st.warning("대리점 또는 출하처 컬럼을 찾을 수 없습니다.")
-
-    # 4. 메뉴 4: 연도/월별 및 상세 비교 분석
-    elif menu == t["menu_4"]:
-        st.subheader("📈 연도별·월별 수주 비교 및 다차원 분석 대시보드")
-        st.info(
-            "💡 연도별, 월별, 제품명, 파일 번수, 사이즈 폭별 오더 건수, 총"
-            " 중량(Kg), 총 수량(PCS)을 비교하고 전년/전월 대비 증감률(%)을"
-            " 확인합니다."
-        )
-
-        st.markdown("#### 🔍 상세 조건 검색 및 필터링")
-        f_col1, f_col2, f_col3 = st.columns(3)
-
-        with f_col1:
-            p_keyword = st.text_input("제품명 검색 (부분 일치)", "")
-        with f_col2:
-            y_options = (
-                ["All"]
-                + list(df[yarn_col].dropna().unique().astype(str))
-                if (yarn_col and yarn_col in df.columns)
-                else ["All"]
-            )
-            selected_yarn = st.selectbox("파일 번수 (Yarn) 필터", y_options)
-        with f_col3:
-            w_options = (
-                ["All"]
-                + list(df[width_col].dropna().unique().astype(str))
-                if (width_col and width_col in df.columns)
-                else ["All"]
-            )
-            selected_width = st.selectbox(
-                "사이즈 폭 (cm/규격) 필터", w_options
-            )
-
-        anal_df = df.copy()
-        if p_keyword:
-            if product_col and product_col in anal_df.columns:
-                anal_df = anal_df[
-                    anal_df[product_col]
-                    .astype(str)
-                    .str.contains(p_keyword, case=False, na=False)
-                ]
-        if (
-            selected_yarn != "All"
-            and yarn_col
-            and yarn_col in anal_df.columns
-        ):
-            anal_df = anal_df[anal_df[yarn_col].astype(str) == selected_yarn]
-        if (
-            selected_width
+            with col_a1
