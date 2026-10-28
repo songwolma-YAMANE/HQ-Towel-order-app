@@ -13,26 +13,15 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    .main-header {
-        font-size: 2.2rem;
-        color: #1E3A8A;
-        font-weight: 700;
-        margin-bottom: 0.2rem;
-    }
-    .sub-header {
-        font-size: 1.1rem;
-        color: #4B5563;
-        margin-bottom: 1.5rem;
-    }
-    .stAlert {
-        border-radius: 0.5rem;
-    }
+    .main-header { font-size: 2.2rem; color: #1E3A8A; font-weight: 700; margin-bottom: 0.2rem; }
+    .sub-header { font-size: 1.1rem; color: #4B5563; margin-bottom: 1.5rem; }
+    .stAlert { border-radius: 0.5rem; }
     </style>
 """,
     unsafe_allow_html=True,
 )
 
-# 다국어 텍스트 사전 (Localization Dictionary)
+# 다국어 텍스트 사전
 LANG_DICT = {
     "한국어": {
         "title": "📦 본사 문직 제품 수주 및 출고 관리 시스템",
@@ -81,7 +70,7 @@ LANG_DICT = {
     },
 }
 
-# --- 사이드바 언어 선택 ---
+# 사이드바 언어 선택
 st.sidebar.markdown("---")
 selected_lang = st.sidebar.selectbox("🌐 Language / 언어", ["한국어", "English"])
 t = LANG_DICT[selected_lang]
@@ -110,56 +99,4 @@ def load_data():
     res.raise_for_status()
     df_temp = pd.read_csv(io.BytesIO(res.content), header=None)
     header_row = 0
-    for i in range(len(df_temp)):
-        row_str = str(df_temp.iloc[i].values)
-        if "출하처" in row_str or "SHIPMENT" in row_str or "제품명" in row_str:
-            header_row = i
-            break
-    data_df = pd.read_csv(io.BytesIO(res.content), header=header_row)
-    data_df.columns = data_df.columns.astype(str).str.strip()
-    return data_df
-
-
-# 메인 실행부
-try:
-    df = load_data()
-
-
-    def find_col(keywords):
-        for col in df.columns:
-            for kw in keywords:
-                if kw.lower() in col.lower():
-                    return col
-        return None
-
-
-    date_col = find_col(["확정납기 1차", "DELIVERY 1", "납기"])
-    date_rcv_col = find_col(["발주서 수령", "발주서"])
-    agency_col = find_col(["대리점", "AGENCY"])
-    ship_col = find_col(["출하처", "SHIPMENT"])
-    product_col = find_col(["제품명", "KOREAN NAME"])
-    completed_col = find_col(["출고 완료", "출고완료"])
-
-    pcs_col = find_col(["order pcs", "pcs", "수량"])
-    kg_col = find_col(["order kg", "kg", "중량"])
-    yarn_col = find_col(["yarn", "번수", "실"])
-    width_col = find_col(["cm", "폭", "규격"])
-
-    if pcs_col and pcs_col in df.columns:
-        df["__PCS_NUM"] = (
-            pd.to_numeric(
-                df[pcs_col].astype(str).str.replace(r"[^0-9.]", "", regex=True),
-                errors="coerce",
-            )
-            .fillna(0)
-            .astype(float)
-        )
-    else:
-        df["__PCS_NUM"] = 1
-
-    if kg_col and kg_col in df.columns:
-        df["__KG_NUM"] = (
-            pd.to_numeric(
-                df[kg_col].astype(str).str.replace(r"[^0-9.]", "", regex=True),
-                errors="coerce",
-            )
+    for i in range(
