@@ -327,11 +327,8 @@ try:
             if not past_df.empty:
                 past_summary = (
                     past_df.groupby("__YEAR")
-                    .agg(
-                        오더건수=("__YEAR", "count"),
-                        총중량_Kg=("__KG_NUM", "sum"),
-                        총수량_PCS=("__PCS_NUM", "sum"),
-                    )
+                    .agg({"__YEAR": "count", "__KG_NUM": "sum", "__PCS_NUM": "sum"})
+                    .rename(columns={"__YEAR": "오더건수", "__KG_NUM": "총중량_Kg", "__PCS_NUM": "총수량_PCS"})
                     .reset_index()
                     .sort_values(by="__YEAR", ascending=False)
                 )
@@ -645,115 +642,4 @@ try:
         ):
             anal_df = anal_df[anal_df[yarn_col].astype(str) == selected_yarn]
         if (
-            selected_width != "All"
-            and width_col
-            and width_col in anal_df.columns
-        ):
-            anal_df = anal_df[anal_df[width_col].astype(str) == selected_width]
-
-        st.markdown("---")
-
-        st.markdown(
-            "### 📅 1. 연도별 비교 분석 (건수 / 중량(Kg) / 수량(PCS))"
-        )
-        if "__YEAR" in anal_df.columns and len(anal_df[anal_df["__YEAR"] > 0]) > 0:
-            yearly_group = (
-                anal_df[anal_df["__YEAR"] > 0]
-                .groupby("__YEAR")
-                .agg(
-                    오더건수=("__YEAR", "count"),
-                    총중량_Kg=("__KG_NUM", "sum"),
-                    총수량_PCS=("__PCS_NUM", "sum"),
-                )
-                .reset_index()
-                .sort_values(by="__YEAR")
-            )
-
-            yearly_group["건수_증감률(%)"] = (
-                yearly_group["오더건수"].pct_change() * 100
-            )
-            yearly_group["중량_증감률(%)"] = (
-                yearly_group["총중량_Kg"].pct_change() * 100
-            )
-            yearly_group["수량_증감률(%)"] = (
-                yearly_group["총수량_PCS"].pct_change() * 100
-            )
-            yearly_group = yearly_group.fillna(0).round(1)
-
-            st.dataframe(yearly_group, use_container_width=True)
-            st.bar_chart(yearly_group.set_index("__YEAR")[["오더건수"]])
-        else:
-            st.warning("유효한 연도 데이터가 없습니다.")
-
-        st.markdown("---")
-
-        st.markdown("### 📊 2. 월별 수주 비교 분석 (연도-월 기준)")
-        if (
-            "__MONTH" in anal_df.columns
-            and len(anal_df[anal_df["__MONTH"] != "NaT"]) > 0
-        ):
-            monthly_group = (
-                anal_df[anal_df["__MONTH"] != "NaT"]
-                .groupby("__MONTH")
-                .agg(
-                    오더건수=("__MONTH", "count"),
-                    총중량_Kg=("__KG_NUM", "sum"),
-                    총수량_PCS=("__PCS_NUM", "sum"),
-                )
-                .reset_index()
-                .sort_values(by="__MONTH")
-            )
-
-            monthly_group["전월대비_건수증감(%)"] = (
-                monthly_group["오더건수"].pct_change() * 100
-            )
-            monthly_group = monthly_group.fillna(0).round(1)
-
-            st.dataframe(monthly_group, use_container_width=True)
-            st.line_chart(monthly_group.set_index("__MONTH")[["오더건수"]])
-        else:
-            st.warning("유효한 월별 데이터가 없습니다.")
-
-        st.markdown("---")
-
-        st.markdown("### 🔍 3. 세부 항목별(제품 / 번수 / 폭) 집계 비교")
-        tab1, tab2, tab3 = st.tabs(
-            ["🏷️ 제품별 비교", "🧵 파일 번수(Yarn)별 비교", "📏 사이즈 폭별 비교"]
-        )
-
-        with tab1:
-            if product_col and product_col in anal_df.columns:
-                prod_summary = (
-                    anal_df.groupby(product_col)
-                    .agg(
-                        오더건수=(product_col, "count"),
-                        총중량_Kg=("__KG_NUM", "sum"),
-                        총수량_PCS=("__PCS_NUM", "sum"),
-                    )
-                    .reset_index()
-                    .sort_values(by="오더건수", ascending=False)
-                )
-                st.dataframe(prod_summary, use_container_width=True)
-            else:
-                st.info("제품명 컬럼을 찾을 수 없습니다.")
-
-        with tab2:
-            if yarn_col and yarn_col in anal_df.columns:
-                yarn_summary = (
-                    anal_df.groupby(yarn_col)
-                    .agg(
-                        오더건수=(yarn_col, "count"),
-                        총중량_Kg=("__KG_NUM", "sum"),
-                        총수량_PCS=("__PCS_NUM", "sum"),
-                    )
-                    .reset_index()
-                    .sort_values(by="오더건수", ascending=False)
-                )
-                st.dataframe(yarn_summary, use_container_width=True)
-            else:
-                st.info("파일 번수(Yarn) 컬럼을 찾을 수 없습니다.")
-
-        with tab3:
-            if width_col and width_col in anal_df.columns:
-                width_summary = (
-                    anal_df.groupby(
+            selected_width
