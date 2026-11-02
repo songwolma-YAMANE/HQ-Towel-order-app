@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import io
+import base64
 import pandas as pd
 import requests
 import streamlit as st
@@ -9,7 +10,7 @@ st.set_page_config(
     page_title="HQ Textile Order & Shipment Management", layout="wide"
 )
 
-# HTML/CSS 커스텀 디자인 적용 (두 로고 크기를 동일하게 맞추기 위한 CSS 추가)
+# HTML/CSS 커스텀 디자인 적용 (두 로고 높이를 동일하게 맞추는 CSS)
 st.markdown(
     """
 <style>
@@ -17,18 +18,49 @@ st.markdown(
 .sub-header { font-size: 1.1rem; color: #4B5563; margin-bottom: 1.5rem; }
 .stAlert { border-radius: 0.5rem; }
 
-/* 로고 크기 통일을 위한 스타일 (높이를 동일하게 고정) */
+/* 두 로고의 높이를 동일하게 고정하는 스타일 */
+.brand-logo-container {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 15px;
+}
 .brand-logo {
-    height: 35px; /* 원하시는 높이로 조절 가능합니다 (예: 30px, 35px, 40px 등) */
+    height: 40px; /* 원하는 높이로 조절 가능합니다 (예: 35px, 40px 등) */
     width: auto;
     object-fit: contain;
-    vertical-align: middle;
-    margin-right: 15px;
 }
 </style>
 """,
     unsafe_allow_html=True,
 )
+
+
+# 로고 이미지를 base64로 변환하여 HTML에 삽입하는 함수
+def get_base64_image(image_path):
+  try:
+    with open(image_path, "rb") as f:
+      data = f.read()
+    return base64.b64encode(data).decode()
+  except Exception:
+    return ""
+
+
+# 로고 파일 경로 (사용 중이신 환경에 맞게 파일명 확인 요망)
+logo1_base64 = get_base64_image("logo_korea.png")
+logo2_base64 = get_base64_image("logo_vina.png")
+
+# 상단에 두 로고를 나란히 출력 (크기 동일하게 적용)
+if logo1_base64 and logo2_base64:
+  st.markdown(
+      f"""
+    <div class="brand-logo-container">
+        <img src="data:image/png;base64,{logo1_base64}" class="brand-logo" alt="SONGWOL">
+        <img src="data:image/png;base64,{logo2_base64}" class="brand-logo" alt="SONGWOL VINA">
+    </div>
+    """,
+      unsafe_allow_html=True,
+  )
 
 # 다국어 텍스트 사전
 LANG_DICT = {
@@ -75,15 +107,7 @@ st.sidebar.markdown("---")
 selected_lang = st.sidebar.selectbox("🌐 Language", ["한국어", "English"])
 t = LANG_DICT[selected_lang]
 
-# 타이틀 적용 (필요시 HTML <img> 태그에 class="brand-logo"를 적용하여 크기를 똑같이 맞출 수 있습니다)
-# 예시:
-# st.markdown(f'''
-#     <div>
-#         <img src="경로/송월로고.png" class="brand-logo">
-#         <img src="경로/송월비나로고.png" class="brand-logo">
-#     </div>
-# ''', unsafe_allow_html=True)
-
+# 타이틀 적용
 st.markdown(f'<div class="main-header">{t["title"]}</div>', unsafe_allow_html=True)
 st.markdown(f'<div class="sub-header">{t["subtitle"]}</div>', unsafe_allow_html=True)
 
@@ -253,7 +277,7 @@ try:
       else:
         st.warning("No date data.")
     else:
-        st.warning("Date column not found.")
+      st.warning("Date column not found.")
 
   elif menu == t["menu_3"]:
     st.subheader("Agency History")
