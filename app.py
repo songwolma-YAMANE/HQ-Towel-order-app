@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 import io
 import base64
+from PIL import Image
 import pandas as pd
 import requests
 import streamlit as st
@@ -10,7 +11,7 @@ st.set_page_config(
     page_title="HQ Textile Order & Shipment Management", layout="wide"
 )
 
-# HTML/CSS 커스텀 디자인 적용 (두 로고 높이를 동일하게 맞추는 CSS)
+# HTML/CSS 커스텀 디자인 적용
 st.markdown(
     """
 <style>
@@ -18,17 +19,11 @@ st.markdown(
 .sub-header { font-size: 1.1rem; color: #4B5563; margin-bottom: 1.5rem; }
 .stAlert { border-radius: 0.5rem; }
 
-/* 두 로고의 높이를 동일하게 고정하는 스타일 */
 .brand-logo-container {
     display: flex;
     align-items: center;
     gap: 20px;
     margin-bottom: 15px;
-}
-.brand-logo {
-    height: 40px; /* 원하는 높이로 조절 가능합니다 (예: 35px, 40px 등) */
-    width: auto;
-    object-fit: contain;
 }
 </style>
 """,
@@ -36,27 +31,38 @@ st.markdown(
 )
 
 
-# 로고 이미지를 base64로 변환하여 HTML에 삽입하는 함수
-def get_base64_image(image_path):
+# 💡 이미지를 읽어와서 높이를 강제로 똑같이 맞추고 Base64로 변환하는 함수
+def get_resized_image_base64(image_path, target_height=40):
   try:
-    with open(image_path, "rb") as f:
-      data = f.read()
-    return base64.b64encode(data).decode()
+    img = Image.open(image_path)
+    # 원본 비율 유지하면서 높이를 target_height로 맞추기
+    original_width, original_height = img.size
+    aspect_ratio = original_width / original_height
+    target_width = int(target_height * aspect_ratio)
+
+    img_resized = img.resize(
+        (target_width, target_height), Image.Resampling.LANCZOS
+    )
+
+    buffered = io.BytesIO()
+    # PNG 포맷 유지 (투명 배경 등 보호)
+    img_resized.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode()
   except Exception:
     return ""
 
 
-# 로고 파일 경로 (사용 중이신 환경에 맞게 파일명 확인 요망)
-logo1_base64 = get_base64_image("logo_korea.png")
-logo2_base64 = get_base64_image("logo_vina.png")
+# 파일명에 맞게 경로 설정 (현재 폴더에 있는 이미지 사용)
+logo1_base64 = get_resized_image_base64("logo_korea.png", target_height=40)
+logo2_base64 = get_resized_image_base64("logo_vina.png", target_height=40)
 
-# 상단에 두 로고를 나란히 출력 (크기 동일하게 적용)
+# 상단에 두 로고를 나란히 출력
 if logo1_base64 and logo2_base64:
   st.markdown(
       f"""
     <div class="brand-logo-container">
-        <img src="data:image/png;base64,{logo1_base64}" class="brand-logo" alt="SONGWOL">
-        <img src="data:image/png;base64,{logo2_base64}" class="brand-logo" alt="SONGWOL VINA">
+        <img src="data:image/png;base64,{logo1_base64}" alt="SONGWOL">
+        <img src="data:image/png;base64,{logo2_base64}" alt="SONGWOL VINA">
     </div>
     """,
       unsafe_allow_html=True,
