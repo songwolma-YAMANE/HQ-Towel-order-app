@@ -30,12 +30,20 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# 💡 사이드바나 상단에서 직접 두 로고 이미지를 업로드하여 크기를 강제로 동일하게 맞추는 기능
+st.sidebar.markdown("---")
+st.sidebar.subheader("🖼️ 로고 이미지 업로드 및 크기 통일")
+uploaded_logo1 = st.sidebar.file_uploader(
+    "첫 번째 로고 (SONGWOL)", type=["png", "jpg", "jpeg"]
+)
+uploaded_logo2 = st.sidebar.file_uploader(
+    "두 번째 로고 (SONGWOL VINA)", type=["png", "jpg", "jpeg"]
+)
 
-# 💡 이미지를 읽어와서 높이를 강제로 똑같이 맞추고 Base64로 변환하는 함수
-def get_resized_image_base64(image_path, target_height=40):
+
+def resize_uploaded_image(uploaded_file, target_height=40):
   try:
-    img = Image.open(image_path)
-    # 원본 비율 유지하면서 높이를 target_height로 맞추기
+    img = Image.open(uploaded_file)
     original_width, original_height = img.size
     aspect_ratio = original_width / original_height
     target_width = int(target_height * aspect_ratio)
@@ -43,20 +51,25 @@ def get_resized_image_base64(image_path, target_height=40):
     img_resized = img.resize(
         (target_width, target_height), Image.Resampling.LANCZOS
     )
-
     buffered = io.BytesIO()
-    # PNG 포맷 유지 (투명 배경 등 보호)
     img_resized.save(buffered, format="PNG")
     return base64.b64encode(buffered.getvalue()).decode()
   except Exception:
     return ""
 
 
-# 파일명에 맞게 경로 설정 (현재 폴더에 있는 이미지 사용)
-logo1_base64 = get_resized_image_base64("logo_korea.png", target_height=40)
-logo2_base64 = get_resized_image_base64("logo_vina.png", target_height=40)
+logo1_base64 = (
+    resize_uploaded_image(uploaded_logo1, target_height=40)
+    if uploaded_logo1
+    else ""
+)
+logo2_base64 = (
+    resize_uploaded_image(uploaded_logo2, target_height=40)
+    if uploaded_logo2
+    else ""
+)
 
-# 상단에 두 로고를 나란히 출력
+# 두 이미지가 모두 업로드되면 동일한 높이로 나란히 출력
 if logo1_base64 and logo2_base64:
   st.markdown(
       f"""
@@ -66,6 +79,11 @@ if logo1_base64 and logo2_base64:
     </div>
     """,
       unsafe_allow_html=True,
+  )
+else:
+  st.info(
+      "👈 사이드바에서 두 개의 로고 이미지 파일을 각각 업로드해주시면,"
+      " 높이가 자동으로 똑같이 맞춰져서 상단에 표시됩니다."
   )
 
 # 다국어 텍스트 사전
