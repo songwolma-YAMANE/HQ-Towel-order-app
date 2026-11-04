@@ -30,7 +30,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 💡 사이드바나 상단에서 직접 두 로고 이미지를 업로드하여 크기를 강제로 동일하게 맞추는 기능
+# 사이드바 로고 업로드
 st.sidebar.markdown("---")
 st.sidebar.subheader("🖼️ 로고 이미지 업로드 및 크기 통일")
 uploaded_logo1 = st.sidebar.file_uploader(
@@ -69,7 +69,6 @@ logo2_base64 = (
     else ""
 )
 
-# 두 이미지가 모두 업로드되면 동일한 높이로 나란히 출력
 if logo1_base64 and logo2_base64:
   st.markdown(
       f"""
@@ -102,7 +101,7 @@ LANG_DICT = {
         "menu_3": "🏢 상세 이력",
         "menu_4": "📈 비교 분석",
         "menu_5": "📝 메모",
-        "search_box": "검색",
+        "search_box": "🔍 검색 및 자동완성 (출하처/제품명)",
         "agency_filter": "대리점 선택",
         "excel_btn": "엑셀 다운로드",
     },
@@ -120,22 +119,19 @@ LANG_DICT = {
         "menu_3": "🏢 History",
         "menu_4": "📈 Analysis",
         "menu_5": "📝 Memos",
-        "search_box": "Search",
+        "search_box": "🔍 Search & Auto-complete (Shipment/Product)",
         "agency_filter": "Agency Filter",
         "excel_btn": "Download Excel",
     },
 }
 
-# 사이드바 언어 선택
 st.sidebar.markdown("---")
 selected_lang = st.sidebar.selectbox("🌐 Language", ["한국어", "English"])
 t = LANG_DICT[selected_lang]
 
-# 타이틀 적용
 st.markdown(f'<div class="main-header">{t["title"]}</div>', unsafe_allow_html=True)
 st.markdown(f'<div class="sub-header">{t["subtitle"]}</div>', unsafe_allow_html=True)
 
-# 구글 스프레드시트 CSV 내보내기 링크
 url = "https://docs.google.com/spreadsheets/d/13Lp9gA3p8a_WstCQA9AyMrfzM8YTtqUpBV8Ryxzszjg/export?format=csv"
 
 
@@ -172,16 +168,15 @@ try:
     return None
 
 
-  date_col = find_col(["확정납기 1차", "DELIVERY 1", "납기"])
+  date_col = find_col(["확정납기 1차", "DELIVERY 1", "납기", "수령"])
   agency_col = find_col(["대리점", "AGENCY"])
   ship_col = find_col(["출하처", "SHIPMENT"])
   product_col = find_col(["제품명", "KOREAN NAME"])
   completed_col = find_col(["출고 완료", "출고완료"])
+  order_date_col = find_col(["발주서 수령", "발주서"])
 
   pcs_col = find_col(["order pcs", "pcs", "수량"])
   kg_col = find_col(["order kg", "kg", "중량"])
-  yarn_col = find_col(["yarn", "번수", "실"])
-  width_col = find_col(["cm", "폭", "규격"])
 
   df["__PCS_NUM"] = (
       pd.to_numeric(
@@ -203,15 +198,31 @@ try:
 
   def format_df_dates(input_df):
     d_df = input_df.copy()
-    if date_col and date_col in d_df.columns:
-      d_df[date_col] = (
-          pd.to_datetime(d_df[date_col], errors="coerce")
-          .dt.strftime("%Y-%m-%d")
-          .fillna("")
-      )
-      d_df[date_col] = d_df[date_col].replace("NaT", "")
+    for col in d_df.columns:
+      if "날짜" in col or "납기" in col or "수령" in col or "date" in col.lower():
+        try:
+          d_df[col] = (
+              pd.to_datetime(d_df[col], errors="coerce")
+              .dt.strftime("%Y-%m-%d")
+              .fillna("")
+          )
+          d_df[col] = d_df[col].replace("NaT", "")
+        except Exception:
+          pass
     return d_df
 
+
+  # 최신순 정렬을 위한 파싱 (발주서 수령일 또는 납기일 기준, 최신순 내림차순)
+  sort_target_col = (
+      order_date_col
+      if (order_date_col and order_date_col in df.columns)
+      else date_col
+  )
+  if sort_target_col and sort_target_col in df.columns:
+    df["__SORT_DATE"] = pd.to_datetime(df[sort_target_col], errors="coerce")
+    df = df.sort_values(by="__SORT_DATE", ascending=False)
+  else:
+    df = df.sort_index(ascending=False)
 
   if "order_memos" not in st.session_state:
     st.session_state.order_memos = {}
@@ -243,7 +254,6 @@ try:
     df["__MONTH"] = df["__PARSED_DATE"].dt.to_period("M").astype(str)
 
   if menu == t["menu_1"]:
-    target_d7 = today + timedelta(days=7)
     total_len = len(df)
     completed_count = (
         len(df[df[completed_col].astype(str).str.upper() == "O"])
@@ -261,18 +271,55 @@ try:
       st.metric("Completion Rate", f"{rate}%")
 
     st.markdown("---")
-    st.subheader("Order List")
-    search_query = st.text_input(t["search_box"], "")
+    st.subheader("Order List (전체 오더 목록 및 최신순 정렬)")
+
+    # 💡 자동완성 검색 기능 구현 (출하처 및 제품명 목록 추출)
+    search_keywords = [""]
+    if ship_col and ship_col in df.columns:
+      search_keywords.extend(df[ship_col].dropna().astype(str).unique().tolist())
+    if product_col and product_col in df.columns:
+      search_keywords.extend(
+          df[product_col].dropna().astype(str).unique().tolist()
+      )
+    search_keywords = sorted(list(set(search_keywords)))
+
+    # 타이핑하면서 자동완성 단어를 고르거나 직접 입력할 수 있는 selectbox 활용
+    selected_search = st.selectbox(
+        t["search_box"],
+        search_keywords,
+        help=(
+            "키를 입력하거나 목록에서 선택하면 연관 단어가 자동완성됩니다."
+        ),
+    )
+
+    # 직접 텍스트를 입력해서 검색하고 싶은 경우를 위한 보조 텍스트 입력창
+    search_query = st.text_input(
+        "또는 직접 검색어 입력",
+        "",
+        placeholder="예: 인스파이어, 삼복 등 직접 입력",
+    )
+
     filtered_df = df.copy()
-    if search_query:
+
+    # 검색 필터 적용
+    active_query = (
+        search_query
+        if search_query
+        else (selected_search if selected_search else "")
+    )
+    if active_query:
       cond = pd.Series(False, index=filtered_df.index)
       if ship_col in filtered_df.columns:
         cond = cond | filtered_df[ship_col].astype(str).str.contains(
-            search_query, na=False, case=False
+            active_query, na=False, case=False
         )
       if product_col in filtered_df.columns:
         cond = cond | filtered_df[product_col].astype(str).str.contains(
-            search_query, na=False, case=False
+            active_query, na=False, case=False
+        )
+      if agency_col in filtered_df.columns:
+        cond = cond | filtered_df[agency_col].astype(str).str.contains(
+            active_query, na=False, case=False
         )
       filtered_df = filtered_df[cond]
 
@@ -283,6 +330,7 @@ try:
             "__MONTH",
             "__PCS_NUM",
             "__KG_NUM",
+            "__SORT_DATE",
         ],
         errors="ignore",
     )
@@ -323,6 +371,7 @@ try:
           .agg({"__YEAR": "count", "__KG_NUM": "sum"})
           .rename(columns={"__YEAR": "Orders", "__KG_NUM": "Total_Kg"})
           .reset_index()
+          .sort_values(by="__YEAR", ascending=False)
       )
       st.dataframe(yearly_summary, use_container_width=True)
       st.bar_chart(yearly_summary.set_index("__YEAR")["Orders"])
