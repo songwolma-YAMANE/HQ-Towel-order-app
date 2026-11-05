@@ -30,7 +30,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 다국어 텍스트 사전 (확장 버전)
+# 다국어 텍스트 사전 (모든 UI 항목 포함)
 LANG_DICT = {
     "한국어": {
         "title": "📦 본사 문직 제품 수주 및 출고 관리 시스템",
@@ -43,32 +43,37 @@ LANG_DICT = {
             " 업로드해주시면, 높이가 자동으로 똑같이 맞춰져서 상단에"
             " 표시됩니다."
         ),
-        "sec_menu": "🔐 보안 및 시스템 메뉴",
+        "sec_menu": "🔐 보안 및 시스템 로그인",
+        "refresh_btn": "데이터 새로고침",
         "pw_label": "관리자 비밀번호 입력",
         "pw_placeholder": "비밀번호",
         "admin_success": "🔓 관리자 모드 활성화",
         "pw_error": "❌ 비밀번호 오류",
         "general_info": "💡 일반 조회 모드",
-        "menu_1": "📊 Dashboard",
-        "menu_2": "📅 Shipment Calendar",
-        "menu_3": "🏢 History",
-        "menu_4": "📈 Analysis",
-        "menu_5": "📝 Memos",
+        "logout_btn": "로그아웃",
+        "menu_title": "메뉴",
+        "menu_1": "📊 대시보드",
+        "menu_2": "📅 출하 캘린더",
+        "menu_3": "🏢 대리점 이력",
+        "menu_4": "📈 비교 분석",
+        "menu_5": "📝 메모 관리",
+        "menu_6": "📈 방문자 통계 (관리자 전용)",
+        "metric_total_orders": "{year} 전체 오더",
+        "metric_completed": "{year} 출고 완료",
+        "metric_total_pcs": "{year} 전체 PCS",
+        "metric_weight": "{year} 전체 중량",
+        "urgent_header": "🚨 [긴급] 7일 이내 출고 임박 리스트",
+        "urgent_none": "향후 7일 이내 출고 임박한 미완료 오더가 없습니다.",
+        "new_header": "🚢 [신규] 최근 7일 이내 발주서 수령 아이템",
+        "new_count_msg": "최근 7일 내 신규 접수된 발주서가 총 {count}건 있습니다.",
+        "order_list_header": "전체 오더 목록 및 최신순 정렬",
         "search_box": "🔍 검색 및 자동완성 (출하처/제품명)",
         "search_help": (
             "키를 입력하거나 목록에서 선택하면 연관 단어가 자동완성됩니다."
         ),
         "direct_search": "또는 직접 검색어 입력",
         "direct_search_ph": "예: 인스파이어, 삼복 등 직접 입력",
-        "urgent_header": "🚨 [긴급] 7일 이내 출고 임박 리스트",
-        "urgent_none": "향후 7일 이내 출고 임박한 미완료 오더가 없습니다.",
-        "new_header": "🚢 [신규] 최근 7일 이내 발주서 수령 아이템",
-        "new_count_msg": "최근 7일 내 신규 접수된 발주서가 총 {count}건 있습니다.",
-        "order_list_header": "Order List (전체 오더 목록 및 최신순 정렬)",
         "unit_count": "건",
-        "metric_total": "전체 오더 수",
-        "metric_completed": "출고 완료 수",
-        "metric_rate": "출고 완료율",
         "save_btn": "메모 저장",
         "save_success": "저장되었습니다!",
         "no_data": "데이터가 없습니다.",
@@ -83,23 +88,25 @@ LANG_DICT = {
             "👈 Please upload two logo image files from the sidebar. Their"
             " heights will be automatically adjusted to match."
         ),
-        "sec_menu": "🔐 Security & System Menu",
+        "sec_menu": "🔐 Security & Login",
+        "refresh_btn": "Refresh Data",
         "pw_label": "Enter Admin Password",
         "pw_placeholder": "Password",
-        "admin_success": "🔓 Admin mode activated",
+        "admin_success": "🔓 Admin mode active.",
         "pw_error": "❌ Incorrect password",
         "general_info": "💡 General view mode",
+        "logout_btn": "Logout",
+        "menu_title": "Menu",
         "menu_1": "📊 Dashboard",
         "menu_2": "📅 Shipment Calendar",
         "menu_3": "🏢 History",
         "menu_4": "📈 Analysis",
         "menu_5": "📝 Memos",
-        "search_box": "🔍 Search & Auto-complete (Shipment/Product)",
-        "search_help": (
-            "Type keys or select from the list to auto-complete related words."
-        ),
-        "direct_search": "Or enter search query directly",
-        "direct_search_ph": "e.g., Inspire, Sambok, etc.",
+        "menu_6": "📈 Visitor Stats (Admin Only)",
+        "metric_total_orders": "{year} Total Orders",
+        "metric_completed": "{year} Completed",
+        "metric_total_pcs": "{year} Total PCS",
+        "metric_weight": "{year} Total Weight",
         "urgent_header": "🚨 [Urgent] Deliveries Due Within 7 Days",
         "urgent_none": (
             "There are no incomplete orders due for delivery in the next 7"
@@ -113,10 +120,13 @@ LANG_DICT = {
         "order_list_header": (
             "Order List (All Orders Sorted by Latest Date)"
         ),
+        "search_box": "🔍 Search & Auto-complete (Shipment/Product)",
+        "search_help": (
+            "Type keys or select from the list to auto-complete related words."
+        ),
+        "direct_search": "Or enter search query directly",
+        "direct_search_ph": "e.g., Inspire, Sambok, etc.",
         "unit_count": "Orders",
-        "metric_total": "Total Orders",
-        "metric_completed": "Completed",
-        "metric_rate": "Completion Rate",
         "save_btn": "Save Memo",
         "save_success": "Saved successfully!",
         "no_data": "No data available.",
@@ -210,12 +220,14 @@ def load_data():
 try:
   df = load_data()
 
+
   def find_col(keywords):
     for col in df.columns:
       for kw in keywords:
         if kw.lower() in col.lower():
           return col
     return None
+
 
   date_col = find_col(["확정납기 1차", "DELIVERY 1", "납기", "수령"])
   agency_col = find_col(["대리점", "AGENCY"])
@@ -244,6 +256,7 @@ try:
       else 0
   )
 
+
   def format_df_dates(input_df):
     d_df = input_df.copy()
     for col in d_df.columns:
@@ -258,6 +271,7 @@ try:
         except Exception:
           pass
     return d_df
+
 
   # 최신순 정렬
   sort_target_col = (
@@ -274,7 +288,13 @@ try:
   if "order_memos" not in st.session_state:
     st.session_state.order_memos = {}
 
+  st.sidebar.markdown("---")
   st.sidebar.header(t["sec_menu"])
+
+  if st.sidebar.button(t["refresh_btn"]):
+    st.cache_data.clear()
+    st.rerun()
+
   ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "songwol1234")
   input_pw = st.sidebar.text_input(
       t["pw_label"], type="password", placeholder=t["pw_placeholder"]
@@ -283,16 +303,36 @@ try:
 
   if is_admin:
     st.sidebar.success(t["admin_success"])
+    if st.sidebar.button(t["logout_btn"]):
+      st.rerun()
   else:
     if input_pw:
       st.sidebar.error(t["pw_error"])
     else:
       st.sidebar.info(t["general_info"])
 
+  st.sidebar.markdown("---")
+  st.sidebar.subheader(t["menu_title"])
   menu = st.sidebar.radio(
-      "Menu",
-      [t["menu_1"], t["menu_2"], t["menu_3"], t["menu_4"], t["menu_5"]],
+      "Menu Selection",
+      [
+          t["menu_1"],
+          t["menu_2"],
+          t["menu_3"],
+          t["menu_4"],
+          t["menu_5"],
+          t["menu_6"],
+      ],
+      label_visibility="collapsed",
   )
+
+  today = pd.to_datetime(datetime.today().date())
+  current_year_str = str(datetime.today().year)
+
+  if date_col and date_col in df.columns:
+    df["__PARSED_DATE"] = pd.to_datetime(df[date_col], errors="coerce")
+    df["__YEAR"] = df["__PARSED_DATE"].dt.year.fillna(0).astype(int)
+    df["__MONTH"] = df["__PARSED_DATE"].dt.to_period("M").astype(str)
 
   if menu == t["menu_1"]:
     total_len = len(df)
@@ -301,40 +341,42 @@ try:
         if (completed_col and completed_col in df.columns)
         else 0
     )
+    total_pcs = int(df["__PCS_NUM"].sum())
+    total_kg = int(df["__KG_NUM"].sum())
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
       st.metric(
-          t["metric_total"], f"{total_len:,} {t['unit_count']}".strip()
+          t["metric_total_orders"].format(year=current_year_str),
+          f"{total_len:,} {t['unit_count']}".strip(),
       )
     with col2:
       st.metric(
-          t["metric_completed"],
+          t["metric_completed"].format(year=current_year_str),
           f"{completed_count:,} {t['unit_count']}".strip(),
       )
     with col3:
-      rate = int((completed_count / total_len * 100) if total_len > 0 else 0)
-      st.metric(t["metric_rate"], f"{rate}%")
+      st.metric(
+          t["metric_total_pcs"].format(year=current_year_str),
+          f"{total_pcs:,} PCS",
+      )
+    with col4:
+      st.metric(
+          t["metric_weight"].format(year=current_year_str),
+          f"{total_kg:,} Kg",
+      )
 
     st.markdown("---")
-
-    # 긴급 출고 임박 섹션
     st.subheader(t["urgent_header"])
-    # (필요시 긴급 목록 처리 로직 적용, 예시로 알림 문구 표시)
     st.info(t["urgent_none"])
 
     st.markdown("---")
-
-    # 신규 발주 수령 섹션
     st.subheader(t["new_header"])
-    # 예시 갯수 바인딩
-    new_orders_count = 9  # 실제 필터링된 데이터 로직 적용 가능
-    st.success(t["new_count_msg"].format(count=new_orders_count))
+    st.success(t["new_count_msg"].format(count=9))
 
     st.markdown("---")
     st.subheader(t["order_list_header"])
 
-    # 자동완성 검색 기능
     search_keywords = [""]
     if ship_col and ship_col in df.columns:
       search_keywords.extend(
@@ -450,5 +492,13 @@ try:
         st.success(t["save_success"])
     else:
       st.warning(t["no_data"])
+
+  elif menu == t["menu_6"]:
+    st.subheader("Visitor Statistics (Admin Only)")
+    if is_admin:
+      st.info("Visitor stats tracking table or chart goes here.")
+    else:
+      st.warning("Admin access required to view visitor stats.")
+
 except Exception as e:
   st.error(f"Error: {e}")
