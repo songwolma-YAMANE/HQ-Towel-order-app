@@ -202,14 +202,12 @@ def load_data():
 try:
   df = load_data()
 
-
   def find_col(keywords):
     for col in df.columns:
       for kw in keywords:
         if kw.lower() in col.lower():
           return col
     return None
-
 
   date_col = find_col(["확정납기 1차", "DELIVERY 1", "납기", "수령"])
   agency_col = find_col(["대리점", "AGENCY"])
@@ -238,7 +236,6 @@ try:
       else 0
   )
 
-
   def format_df_dates(input_df):
     d_df = input_df.copy()
     for col in d_df.columns:
@@ -254,7 +251,7 @@ try:
           pass
     return d_df
 
-
+  # 최신 날짜가 맨 위로 오도록 정렬 로직 보완
   sort_target_col = (
       order_date_col
       if (order_date_col and order_date_col in df.columns)
@@ -262,7 +259,7 @@ try:
   )
   if sort_target_col and sort_target_col in df.columns:
     df["__SORT_DATE"] = pd.to_datetime(df[sort_target_col], errors="coerce")
-    df = df.sort_values(by="__SORT_DATE", ascending=False)
+    df = df.sort_values(by="__SORT_DATE", ascending=False, na_position="last")
   else:
     df = df.sort_index(ascending=False)
 
