@@ -62,4 +62,510 @@ LANG_DICT = {
         "metric_total_orders": "{year} 전체 오더",
         "metric_completed": "{year} 출고 완료",
         "metric_total_pcs": "{year} 전체 PCS",
-        "
+        "metric_weight": "{year} 전체 중량",
+        "search_box": "🔍 검색 및 자동완성 (출하처/제품명)",
+        "search_help": (
+            "키를 입력하거나 목록에서 선택하면 연관 단어가 자동완성됩니다."
+        ),
+        "direct_search": "검색 (출하처 / 제품명 / 대리점 직접 입력)",
+        "direct_search_ph": "예: 인스파이어, 삼복 등 직접 입력",
+        "unit_count": "건",
+        "save_btn": "메모 저장",
+        "save_success": "저장되었습니다!",
+        "no_data": "데이터가 없습니다.",
+    },
+    "English": {
+        "title": "📦 HQ Textile Order & Shipment Management System",
+        "subtitle": "Real-time Google Sheets Dashboard",
+        "logo_header": "🖼️ Upload & Resize Logos",
+        "logo_1": "First Logo (SONGWOL)",
+        "logo_2": "Second Logo (SONGWOL VINA)",
+        "logo_info": (
+            "👈 Please upload two logo image files from the sidebar. Their"
+            " heights will be automatically adjusted to match."
+        ),
+        "sec_menu": "🔐 Security & Login",
+        "refresh_btn": "🔄 Refresh Data (Immediate)",
+        "pw_label": "Enter Admin Password",
+        "pw_placeholder": "Password",
+        "admin_success": "🔓 Admin mode active.",
+        "pw_error": "❌ Incorrect password",
+        "general_info": "💡 General view mode",
+        "logout_btn": "Logout",
+        "menu_title": "Menu",
+        "menu_1": "📊 Dashboard",
+        "menu_2": "📅 Shipment Calendar",
+        "menu_3": "🏢 History",
+        "menu_4": "📈 Analysis",
+        "menu_5": "📝 Memos",
+        "menu_6": "📈 Visitor Stats (Admin Only)",
+        "metric_total_orders": "{year} Total Orders",
+        "metric_completed": "{year} Completed",
+        "metric_total_pcs": "{year} Total PCS",
+        "metric_weight": "{year} Total Weight",
+        "search_box": "🔍 Search & Auto-complete (Shipment/Product)",
+        "search_help": (
+            "Type keys or select from the list to auto-complete related words."
+        ),
+        "direct_search": "Search (Enter Shipment / Product / Agency)",
+        "direct_search_ph": "e.g., Inspire, Sambok, etc.",
+        "unit_count": "Orders",
+        "save_btn": "Save Memo",
+        "save_success": "Saved successfully!",
+        "no_data": "No data available.",
+    },
+}
+
+# 사이드바 언어 선택
+st.sidebar.markdown("---")
+selected_lang = st.sidebar.selectbox("🌐 Language", ["한국어", "English"])
+t = LANG_DICT[selected_lang]
+
+# 사이드바 로고 업로드
+st.sidebar.markdown("---")
+st.sidebar.subheader(t["logo_header"])
+uploaded_logo1 = st.sidebar.file_uploader(
+    t["logo_1"], type=["png", "jpg", "jpeg"]
+)
+uploaded_logo2 = st.sidebar.file_uploader(
+    t["logo_2"], type=["png", "jpg", "jpeg"]
+)
+
+
+def resize_uploaded_image(uploaded_file, target_height=40):
+    try:
+        img = Image.open(uploaded_file)
+        original_width, original_height = img.size
+        aspect_ratio = original_width / original_height
+        target_width = int(target_height * aspect_ratio)
+
+        img_resized = img.resize(
+            (target_width, target_height), Image.Resampling.LANCZOS
+        )
+        buffered = io.BytesIO()
+        img_resized.save(buffered, format="PNG")
+        return base64.b64encode(buffered.getvalue()).decode()
+    except Exception:
+        return ""
+
+
+logo1_base64 = (
+    resize_uploaded_image(uploaded_logo1, target_height=40)
+    if uploaded_logo1
+    else ""
+)
+logo2_base64 = (
+    resize_uploaded_image(uploaded_logo2, target_height=40)
+    if uploaded_logo2
+    else ""
+)
+
+if logo1_base64 and logo2_base64:
+    st.markdown(
+        f"""
+    <div class="brand-logo-container">
+        <img src="data:image/png;base64,{logo1_base64}" alt="SONGWOL">
+        <img src="data:image/png;base64,{logo2_base64}" alt="SONGWOL VINA">
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+else:
+    st.info(t["logo_info"])
+
+st.markdown(f'<div class="main-header">{t["title"]}</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="sub-header">{t["subtitle"]}</div>', unsafe_allow_html=True)
+
+BASE_SHEET_URL = (
+    "https://docs.google.com/spreadsheets/d/"
+    "13Lp9gA3p8a_WstCQA9AyMrfzM8YTtqUpBV8Ryxzszjg/export?format=csv"
+)
+
+
+def safe_parse_dates(series):
+    cleaned = (
+        series.astype(str)
+        .str.strip()
+        .str.replace(r"[\./]\s*", "-", regex=True)
+        .str.replace(r"-$", "", regex=True)
+    )
+    return pd.to_datetime(cleaned, errors="coerce")
+
+
+@st.cache_data(ttl=15)
+def load_data():
+    fetch_url = f"{BASE_SHEET_URL}&_cb={int(time.time())}"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        ),
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+    }
+    res = requests.get(fetch_url, headers=headers)
+    res.raise_for_status()
+
+    df_temp = pd.read_csv(io.BytesIO(res.content), header=None)
+    header_row = 0
+    for i in range(len(df_temp)):
+        row_str = str(df_temp.iloc[i].values)
+        if "출하처" in row_str or "SHIPMENT" in row_str or "제품명" in row_str:
+            header_row = i
+            break
+
+    data_df = pd.read_csv(io.BytesIO(res.content), header=header_row)
+    data_df.columns = data_df.columns.astype(str).str.strip()
+    data_df = data_df.dropna(how="all")
+    return data_df
+
+
+try:
+    st.sidebar.markdown("---")
+    st.sidebar.header(t["sec_menu"])
+
+    if st.sidebar.button(t["refresh_btn"], use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+    df = load_data()
+
+    def find_col(keywords):
+        for col in df.columns:
+            for kw in keywords:
+                if kw.lower() in col.lower():
+                    return col
+        return None
+
+    date_col = find_col(["확정납기 1차", "납기 1차", "DELIVERY 1", "납기"])
+    agency_col = find_col(["대리점", "AGENCY"])
+    ship_col = find_col(["출하처", "SHIPMENT"])
+    product_col = find_col(["제품명", "KOREAN NAME"])
+    completed_col = find_col(["출고 완료", "출고완료"])
+    order_date_col = find_col(["발주서 수령", "발주서"])
+
+    pcs_col = find_col(["order pcs", "pcs", "수량"])
+    kg_col = find_col(["order kg", "kg", "중량"])
+
+    # 주요 컬럼(출하처, 제품명, 대리점)이 모두 비어있는 빈 행 제거
+    key_cols = [c for c in [ship_col, product_col, agency_col] if c and c in df.columns]
+    if key_cols:
+        df = df.dropna(subset=key_cols, how="all")
+
+    # [핵심] 구글 시트 맨 아래에 입력된 최신 행이 무조건 맨 위(0번)로 오도록 시트 전체를 역순 뒤집기!
+    df["__ROW_ID"] = range(len(df))
+    df = df.iloc[::-1].reset_index(drop=True)
+
+    df["__PCS_NUM"] = (
+        pd.to_numeric(
+            df[pcs_col].astype(str).str.replace(r"[^0-9.]", "", regex=True),
+            errors="coerce",
+        ).fillna(0)
+        if pcs_col and pcs_col in df.columns
+        else 1
+    )
+    df["__KG_NUM"] = (
+        pd.to_numeric(
+            df[kg_col].astype(str).str.replace(r"[^0-9.]", "", regex=True),
+            errors="coerce",
+        ).fillna(0)
+        if kg_col and kg_col in df.columns
+        else 0
+    )
+
+    def format_df_dates(input_df):
+        d_df = input_df.copy()
+        for col in d_df.columns:
+            if "날짜" in col or "납기" in col or "수령" in col or "date" in col.lower():
+                try:
+                    parsed = safe_parse_dates(d_df[col])
+                    formatted = parsed.dt.strftime("%Y-%m-%d")
+                    d_df[col] = formatted.where(parsed.notna(), d_df[col].fillna(""))
+                    d_df[col] = d_df[col].replace(["NaT", "None", "nan"], "")
+                except Exception:
+                    pass
+        return d_df
+
+    if date_col and date_col in df.columns:
+        df["__PARSED_DATE"] = safe_parse_dates(df[date_col])
+        df["__YEAR"] = df["__PARSED_DATE"].dt.year.fillna(0).astype(int)
+        df["__MONTH"] = df["__PARSED_DATE"].dt.to_period("M").astype(str)
+
+    if order_date_col and order_date_col in df.columns:
+        df["__PARSED_ORDER_DATE"] = safe_parse_dates(df[order_date_col])
+
+    if "order_memos" not in st.session_state:
+        st.session_state.order_memos = {}
+
+    ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "songwol1234")
+    input_pw = st.sidebar.text_input(
+        t["pw_label"], type="password", placeholder=t["pw_placeholder"]
+    )
+    is_admin = input_pw == ADMIN_PASSWORD
+
+    if is_admin:
+        st.sidebar.success(t["admin_success"])
+        if st.sidebar.button(t["logout_btn"]):
+            st.rerun()
+    else:
+        if input_pw:
+            st.sidebar.error(t["pw_error"])
+        else:
+            st.sidebar.info(t["general_info"])
+
+    st.sidebar.markdown("---")
+    st.sidebar.subheader(t["menu_title"])
+    menu = st.sidebar.radio(
+        "Menu Selection",
+        [
+            t["menu_1"],
+            t["menu_2"],
+            t["menu_3"],
+            t["menu_4"],
+            t["menu_5"],
+            t["menu_6"],
+        ],
+        label_visibility="collapsed",
+    )
+
+    today = pd.to_datetime(datetime.today().date())
+    current_year_str = str(datetime.today().year)
+
+    INTERNAL_COLS = [
+        "__PARSED_DATE",
+        "__PARSED_ORDER_DATE",
+        "__YEAR",
+        "__MONTH",
+        "__PCS_NUM",
+        "__KG_NUM",
+        "__ROW_ID",
+    ]
+
+    if menu == t["menu_1"]:
+        total_len = len(df)
+        completed_count = (
+            len(df[df[completed_col].astype(str).str.strip().str.upper() == "O"])
+            if (completed_col and completed_col in df.columns)
+            else 0
+        )
+        total_pcs = int(df["__PCS_NUM"].sum())
+        total_kg = int(df["__KG_NUM"].sum())
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric(
+                t["metric_total_orders"].format(year=current_year_str),
+                f"{total_len:,} {t['unit_count']}".strip(),
+            )
+        with col2:
+            st.metric(
+                t["metric_completed"].format(year=current_year_str),
+                f"{completed_count:,} {t['unit_count']}".strip(),
+            )
+        with col3:
+            st.metric(
+                t["metric_total_pcs"].format(year=current_year_str),
+                f"{total_pcs:,} PCS",
+            )
+        with col4:
+            st.metric(
+                t["metric_weight"].format(year=current_year_str),
+                f"{total_kg:,} Kg",
+            )
+
+        st.markdown("---")
+        st.subheader("🚨 [Urgent] Deliveries Due Within 7 Days")
+        if "__PARSED_DATE" in df.columns:
+            not_completed = (
+                df[completed_col].astype(str).str.strip().str.upper() != "O"
+                if (completed_col and completed_col in df.columns)
+                else pd.Series(True, index=df.index)
+            )
+            urgent_mask = (
+                not_completed
+                & (df["__PARSED_DATE"] >= today)
+                & (df["__PARSED_DATE"] <= today + timedelta(days=7))
+            )
+            urgent_df = df[urgent_mask].reset_index(drop=True)
+            if len(urgent_df) > 0:
+                st.warning(
+                    f"There are {len(urgent_df)} incomplete orders due for delivery in the next 7 days."
+                )
+                st.dataframe(
+                    format_df_dates(urgent_df.drop(columns=INTERNAL_COLS, errors="ignore")),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("There are no incomplete orders due for delivery in the next 7 days.")
+        else:
+            st.info("There are no incomplete orders due for delivery in the next 7 days.")
+
+        st.markdown("---")
+        st.subheader("🚢 [New] Purchase Orders Received in Last 7 Days")
+        recent_col = (
+            "__PARSED_ORDER_DATE"
+            if "__PARSED_ORDER_DATE" in df.columns
+            else ("__PARSED_DATE" if "__PARSED_DATE" in df.columns else None)
+        )
+        if recent_col:
+            new_mask = (df[recent_col] >= today - timedelta(days=7)) & (
+                df[recent_col] <= today + timedelta(days=1)
+            )
+            new_orders_df = df[new_mask].reset_index(drop=True)
+            st.success(
+                f"There are a total of {len(new_orders_df)} new purchase orders received in the last 7 days."
+            )
+            if len(new_orders_df) > 0:
+                with st.expander("📋 View Recent Purchase Orders", expanded=False):
+                    st.dataframe(
+                        format_df_dates(new_orders_df.drop(columns=INTERNAL_COLS, errors="ignore")),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+        else:
+            st.info("Order date column not found.")
+
+        st.markdown("---")
+        st.subheader("Order List (전체 오더 목록 및 검색 - 최신순)")
+
+        search_keywords = [""]
+        if ship_col and ship_col in df.columns:
+            search_keywords.extend(
+                df[ship_col].dropna().astype(str).unique().tolist()
+            )
+        if product_col and product_col in df.columns:
+            search_keywords.extend(
+                df[product_col].dropna().astype(str).unique().tolist()
+            )
+        search_keywords = sorted(list(set(search_keywords)))
+
+        selected_search = st.selectbox(
+            t["search_box"], search_keywords, help=t["search_help"]
+        )
+        search_query = st.text_input(
+            t["direct_search"], "", placeholder=t["direct_search_ph"]
+        )
+
+        filtered_df = df.copy()
+        active_query = (
+            search_query
+            if search_query
+            else (selected_search if selected_search else "")
+        )
+        if active_query:
+            cond = pd.Series(False, index=filtered_df.index)
+            if ship_col in filtered_df.columns:
+                cond = cond | filtered_df[ship_col].astype(str).str.contains(
+                    active_query, na=False, case=False
+                )
+            if product_col in filtered_df.columns:
+                cond = cond | filtered_df[product_col].astype(str).str.contains(
+                    active_query, na=False, case=False
+                )
+            if agency_col in filtered_df.columns:
+                cond = cond | filtered_df[agency_col].astype(str).str.contains(
+                    active_query, na=False, case=False
+                )
+            filtered_df = filtered_df[cond]
+
+        editor_df = (
+            filtered_df.drop(columns=INTERNAL_COLS, errors="ignore")
+            .reset_index(drop=True)
+        )
+        st.data_editor(
+            format_df_dates(editor_df),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    elif menu == t["menu_2"]:
+        st.subheader("Shipment Calendar")
+        if "__PARSED_DATE" in df.columns:
+            valid_df = df.dropna(subset=["__PARSED_DATE"]).copy()
+            valid_df["YearMonth"] = (
+                valid_df["__PARSED_DATE"].dt.to_period("M").astype(str)
+            )
+            ym_list = sorted(valid_df["YearMonth"].unique(), reverse=True)
+            if ym_list:
+                selected_ym = st.selectbox("Select Year-Month", ym_list)
+                month_df = (
+                    valid_df[valid_df["YearMonth"] == selected_ym]
+                    .drop(columns=INTERNAL_COLS + ["YearMonth"], errors="ignore")
+                    .reset_index(drop=True)
+                )
+                st.dataframe(
+                    format_df_dates(month_df),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.warning(t["no_data"])
+        else:
+            st.warning(t["no_data"])
+
+    elif menu == t["menu_3"]:
+        st.subheader("Agency History")
+        if agency_col in df.columns:
+            selected_target = st.selectbox(
+                "Select Agency", df[agency_col].dropna().unique()
+            )
+            target_df = (
+                df[df[agency_col] == selected_target]
+                .drop(columns=INTERNAL_COLS, errors="ignore")
+                .reset_index(drop=True)
+            )
+            st.dataframe(
+                format_df_dates(target_df),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.warning(t["no_data"])
+
+    elif menu == t["menu_4"]:
+        st.subheader("Comparative Analysis")
+        if "__YEAR" in df.columns:
+            yearly_summary = (
+                df[df["__YEAR"] > 0]
+                .groupby("__YEAR")
+                .agg({"__YEAR": "count", "__KG_NUM": "sum"})
+                .rename(columns={"__YEAR": "Orders", "__KG_NUM": "Total_Kg"})
+                .reset_index()
+                .sort_values(by="__YEAR", ascending=False)
+                .reset_index(drop=True)
+            )
+            st.dataframe(yearly_summary, use_container_width=True, hide_index=True)
+            st.bar_chart(yearly_summary.set_index("__YEAR")["Orders"])
+        else:
+            st.warning(t["no_data"])
+
+    elif menu == t["menu_5"]:
+        st.subheader("Staff Memos")
+        if ship_col and product_col in df.columns:
+            df["오더표시"] = (
+                df["__ROW_ID"].astype(str)
+                + " | "
+                + df[ship_col].astype(str)
+                + " | "
+                + df[product_col].astype(str)
+            )
+            selected_label = st.selectbox("Select Order", df["오더표시"].tolist())
+            idx = int(selected_label.split(" | ")[0])
+            memo = st.text_area(
+                "Enter Memo", value=st.session_state.order_memos.get(idx, "")
+            )
+            if st.button(t["save_btn"]):
+                st.session_state.order_memos[idx] = memo
+                st.success(t["save_success"])
+        else:
+            st.warning(t["no_data"])
+
+    elif menu == t["menu_6"]:
+        st.subheader("Visitor Statistics (Admin Only)")
+        if is_admin:
+            st.info("Visitor stats tracking table or chart goes here.")
+        else:
+            st.warning("Admin access required to view visitor stats.")
+
+except Exception as e:
+    st.error(f"Error: {e}")
