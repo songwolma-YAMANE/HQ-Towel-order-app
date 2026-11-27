@@ -63,12 +63,12 @@ LANG_DICT = {
         "metric_completed": "{year} 출고 완료",
         "metric_total_pcs": "{year} 전체 PCS",
         "metric_weight": "{year} 전체 중량",
-        "search_box": "🔍 검색 및 자동완성 (출하처/제품명)",
+        "search_box": "🔍 검색 및 자동완성 (출하처/제품명/ERP명)",
         "search_help": (
             "키를 입력하거나 목록에서 선택하면 연관 단어가 자동완성됩니다."
         ),
-        "direct_search": "검색 (출하처 / 제품명 / 대리점 직접 입력)",
-        "direct_search_ph": "예: 인스파이어, 삼복 등 직접 입력",
+        "direct_search": "검색 (출하처 / 제품명 / ERP명 / 대리점 직접 입력)",
+        "direct_search_ph": "예: 인스파이어, scrub, ivory 등 직접 입력",
         "unit_count": "건",
         "save_btn": "메모 저장",
         "save_success": "저장되었습니다!",
@@ -103,12 +103,12 @@ LANG_DICT = {
         "metric_completed": "{year} Completed",
         "metric_total_pcs": "{year} Total PCS",
         "metric_weight": "{year} Total Weight",
-        "search_box": "🔍 Search & Auto-complete (Shipment/Product)",
+        "search_box": "🔍 Search & Auto-complete (Shipment/Product/ERP)",
         "search_help": (
             "Type keys or select from the list to auto-complete related words."
         ),
-        "direct_search": "Search (Enter Shipment / Product / Agency)",
-        "direct_search_ph": "e.g., Inspire, Sambok, etc.",
+        "direct_search": "Search (Enter Shipment / Product / ERP / Agency)",
+        "direct_search_ph": "e.g., Inspire, scrub, ivory, etc.",
         "unit_count": "Orders",
         "save_btn": "Save Memo",
         "save_success": "Saved successfully!",
@@ -240,6 +240,7 @@ try:
     agency_col = find_col(["대리점", "AGENCY"])
     ship_col = find_col(["출하처", "SHIPMENT"])
     product_col = find_col(["제품명", "KOREAN NAME"])
+    erp_col = find_col(["ITEM", "ERP NAME", "영문"])  # [수정 1] 영문 ERP 품목명 컬럼 추가
     completed_col = find_col(["출고 완료", "출고완료"])
     order_date_col = find_col(["발주서 수령", "발주서"])
 
@@ -428,15 +429,18 @@ try:
         st.markdown("---")
         st.subheader("Order List (전체 오더 목록 및 검색 - 최신순)")
 
+        # [수정 2] 한글 + 영어(ERP) + 출하처 + 대리점 통합 검색 및 부분 일치/다중 키워드 지원
+        target_search_cols = [
+            c for c in [ship_col, product_col, erp_col, agency_col]
+            if c and c in df.columns
+        ]
+
         search_keywords = [""]
-        if ship_col and ship_col in df.columns:
-            search_keywords.extend(
-                df[ship_col].dropna().astype(str).unique().tolist()
-            )
-        if product_col and product_col in df.columns:
-            search_keywords.extend(
-                df[product_col].dropna().astype(str).unique().tolist()
-            )
+        for col in [ship_col, product_col, erp_col]:
+            if col and col in df.columns:
+                search_keywords.extend(
+                    df[col].dropna().astype(str).str.strip().unique().tolist()
+                )
         search_keywords = sorted(list(set(search_keywords)))
 
         selected_search = st.selectbox(
@@ -448,23 +452,24 @@ try:
 
         filtered_df = df.copy()
         active_query = (
-            search_query
-            if search_query
-            else (selected_search if selected_search else "")
+            search_query.strip()
+            if search_query.strip()
+            else (selected_search.strip() if selected_search else "")
         )
-        if active_query:
-            cond = pd.Series(False, index=filtered_df.index)
-            if ship_col in filtered_df.columns:
-                cond = cond | filtered_df[ship_col].astype(str).str.contains(
-                    active_query, na=False, case=False
-                )
-            if product_col in filtered_df.columns:
-                cond = cond | filtered_df[product_col].astype(str).str.contains(
-                    active_query, na=False, case=False
-                )
-            if agency_col in filtered_df.columns:
-                cond = cond | filtered_df[agency_col].astype(str).str.contains(
-                    active_query, na=False, case=False
+
+        if active_query and target_search_cols:
+            combined_text = (
+                filtered_df[target_search_cols]
+                .fillna("")
+                .astype(str)
+                .agg(" ".join, axis=1)
+                .str.lower()
+            )
+            tokens = active_query.lower().split()
+            cond = pd.Series(True, index=filtered_df.index)
+            for token in tokens:
+                cond = cond & combined_text.str.contains(
+                    token, na=False, regex=False
                 )
             filtered_df = filtered_df[cond]
 
