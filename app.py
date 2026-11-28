@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta
 import base64
 import io
+import re
 import time
+import unicodedata
 from PIL import Image
 import pandas as pd
 import requests
@@ -11,6 +13,13 @@ import streamlit as st
 st.set_page_config(
     page_title="HQ Textile Order & Shipment Management", layout="wide"
 )
+
+# [보안 수정 1] URL 링크에 인증/로그인 관련 파라미터가 섞여 들어오는 것 원천 차단
+try:
+    if len(st.query_params) > 0:
+        st.query_params.clear()
+except Exception:
+    pass
 
 # HTML/CSS 커스텀 디자인 적용
 st.markdown(
@@ -26,6 +35,14 @@ st.markdown(
     gap: 20px;
     margin-bottom: 15px;
 }
+.login-box {
+    max-width: 440px;
+    margin: 4rem auto;
+    padding: 2rem;
+    border-radius: 0.75rem;
+    border: 1px solid #E5E7EB;
+    background-color: #F9FAFB;
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -36,6 +53,11 @@ LANG_DICT = {
     "한국어": {
         "title": "📦 본사 문직 제품 수주 및 출고 관리 시스템",
         "subtitle": "실시간 구글 스프레드시트 연동 대시보드",
+        "login_title": "🔐 시스템 로그인",
+        "login_desc": "관리자 또는 일반 뷰어 비밀번호를 입력해 주세요.",
+        "login_pw_label": "비밀번호",
+        "login_pw_ph": "비밀번호 입력",
+        "login_btn": "로그인",
         "logo_header": "🖼️ 로고 이미지 업로드 및 크기 통일",
         "logo_1": "첫 번째 로고 (SONGWOL)",
         "logo_2": "두 번째 로고 (SONGWOL VINA)",
@@ -46,11 +68,9 @@ LANG_DICT = {
         ),
         "sec_menu": "🔐 보안 및 시스템 로그인",
         "refresh_btn": "🔄 데이터 새로고침 (즉시 반영)",
-        "pw_label": "관리자 비밀번호 입력",
-        "pw_placeholder": "비밀번호",
-        "admin_success": "🔓 관리자 모드 활성화",
-        "pw_error": "❌ 비밀번호 오류",
-        "general_info": "💡 일반 조회 모드",
+        "admin_success": "🔓 최고 관리자 모드로 접속 중입니다.",
+        "viewer_success": "👁️ 일반 뷰어 모드로 접속 중입니다.",
+        "pw_error": "❌ 비밀번호가 올바르지 않습니다.",
         "logout_btn": "로그아웃",
         "menu_title": "메뉴",
         "menu_1": "📊 대시보드",
@@ -65,18 +85,25 @@ LANG_DICT = {
         "metric_weight": "{year} 전체 중량",
         "search_box": "🔍 검색 및 자동완성 (출하처/제품명/ERP명)",
         "search_help": (
-            "키를 입력하거나 목록에서 선택하면 연관 단어가 자동완성됩니다."
+            "목록에서 선택하거나 아래 검색창에 한글·영어를 직접 입력하세요."
         ),
-        "direct_search": "검색 (출하처 / 제품명 / ERP명 / 대리점 직접 입력)",
-        "direct_search_ph": "예: 인스파이어, scrub, ivory 등 직접 입력",
+        "direct_search": "통합 검색 (한글 제품명 / 영어 ERP명 / 출하처 / 대리점 / 색상 등 전체)",
+        "direct_search_ph": "예: 인스파이어, scrub, ivory, waffle, FT170 등",
+        "search_result": "검색 결과: 총 {count:,}건",
         "unit_count": "건",
         "save_btn": "메모 저장",
         "save_success": "저장되었습니다!",
         "no_data": "데이터가 없습니다.",
+        "admin_only_warn": "관리자 권한이 필요합니다.",
     },
     "English": {
         "title": "📦 HQ Textile Order & Shipment Management System",
         "subtitle": "Real-time Google Sheets Dashboard",
+        "login_title": "🔐 System Login",
+        "login_desc": "Please enter the Admin or Viewer password to continue.",
+        "login_pw_label": "Password",
+        "login_pw_ph": "Enter password",
+        "login_btn": "Sign In",
         "logo_header": "🖼️ Upload & Resize Logos",
         "logo_1": "First Logo (SONGWOL)",
         "logo_2": "Second Logo (SONGWOL VINA)",
@@ -86,11 +113,9 @@ LANG_DICT = {
         ),
         "sec_menu": "🔐 Security & Login",
         "refresh_btn": "🔄 Refresh Data (Immediate)",
-        "pw_label": "Enter Admin Password",
-        "pw_placeholder": "Password",
-        "admin_success": "🔓 Admin mode active.",
-        "pw_error": "❌ Incorrect password",
-        "general_info": "💡 General view mode",
+        "admin_success": "🔓 Logged in as Admin.",
+        "viewer_success": "👁️ Logged in as Viewer.",
+        "pw_error": "❌ Incorrect password.",
         "logout_btn": "Logout",
         "menu_title": "Menu",
         "menu_1": "📊 Dashboard",
@@ -105,14 +130,16 @@ LANG_DICT = {
         "metric_weight": "{year} Total Weight",
         "search_box": "🔍 Search & Auto-complete (Shipment/Product/ERP)",
         "search_help": (
-            "Type keys or select from the list to auto-complete related words."
+            "Select from the list or type Korean/English keywords below."
         ),
-        "direct_search": "Search (Enter Shipment / Product / ERP / Agency)",
-        "direct_search_ph": "e.g., Inspire, scrub, ivory, etc.",
+        "direct_search": "Unified Search (Product / ERP Name / Shipment / Agency / Color)",
+        "direct_search_ph": "e.g., Inspire, scrub, ivory, waffle, FT170...",
+        "search_result": "Matching Orders: {count:,}",
         "unit_count": "Orders",
         "save_btn": "Save Memo",
         "save_success": "Saved successfully!",
         "no_data": "No data available.",
+        "admin_only_warn": "Admin access required.",
     },
 }
 
@@ -121,7 +148,51 @@ st.sidebar.markdown("---")
 selected_lang = st.sidebar.selectbox("🌐 Language", ["한국어", "English"])
 t = LANG_DICT[selected_lang]
 
-# 사이드바 로고 업로드
+# [보안 수정 2] 사용자별 독립 세션(st.session_state) 기반 관리자/뷰어 로그인 게이트
+# - URL이나 서버 캐시에 로그인 정보를 저장하지 않으므로 링크를 공유해도 절대 자동 로그인되지 않음
+if "auth_role" not in st.session_state:
+    st.session_state["auth_role"] = None
+
+ADMIN_PASSWORD = str(st.secrets.get("ADMIN_PASSWORD", "songwol1234"))
+VIEWER_PASSWORD = str(st.secrets.get("VIEWER_PASSWORD", "viewer1234"))
+
+if st.session_state["auth_role"] is None:
+    st.markdown(f'<div class="main-header">{t["title"]}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sub-header">{t["subtitle"]}</div>', unsafe_allow_html=True)
+
+    _, center_col, _ = st.columns([1, 1.5, 1])
+    with center_col:
+        st.subheader(t["login_title"])
+        st.caption(t["login_desc"])
+
+        # clear_on_submit=True로 제출 후 입력창에 비밀번호가 남지 않도록 처리
+        with st.form("login_form", clear_on_submit=True):
+            entered_pw = st.text_input(
+                t["login_pw_label"],
+                type="password",
+                placeholder=t["login_pw_ph"],
+                autocomplete="new-password",
+            )
+            submitted = st.form_submit_button(
+                t["login_btn"], use_container_width=True
+            )
+
+        if submitted:
+            if entered_pw == ADMIN_PASSWORD:
+                st.session_state["auth_role"] = "admin"
+                st.rerun()
+            elif entered_pw == VIEWER_PASSWORD:
+                st.session_state["auth_role"] = "viewer"
+                st.rerun()
+            else:
+                st.error(t["pw_error"])
+
+    # 로그인 완료 전까지 아래의 데이터 로딩 및 화면 렌더링을 완전히 중단
+    st.stop()
+
+is_admin = st.session_state["auth_role"] == "admin"
+
+# 사이드바 로고 업로드 (관리자만 업로드 UI 표시, 필요 시 뷰어도 동일하게 열 수 있음)
 st.sidebar.markdown("---")
 st.sidebar.subheader(t["logo_header"])
 uploaded_logo1 = st.sidebar.file_uploader(
@@ -192,6 +263,14 @@ def safe_parse_dates(series):
     return pd.to_datetime(cleaned, errors="coerce")
 
 
+def normalize_search_text(text):
+    """한글/영문 대소문자, 전각문자, 자소 분리, 다중 공백을 통일"""
+    if pd.isna(text):
+        return ""
+    s = unicodedata.normalize("NFKC", str(text)).lower()
+    return re.sub(r"\s+", " ", s).strip()
+
+
 @st.cache_data(ttl=15)
 def load_data():
     fetch_url = f"{BASE_SHEET_URL}&_cb={int(time.time())}"
@@ -214,7 +293,10 @@ def load_data():
             break
 
     data_df = pd.read_csv(io.BytesIO(res.content), header=header_row)
-    data_df.columns = data_df.columns.astype(str).str.strip()
+    # 컬럼명의 줄바꿈(\n) 및 중복 공백 정리
+    data_df.columns = [
+        re.sub(r"\s+", " ", str(c)).strip() for c in data_df.columns
+    ]
     data_df = data_df.dropna(how="all")
     return data_df
 
@@ -227,32 +309,45 @@ try:
         st.cache_data.clear()
         st.rerun()
 
+    # 로그인 상태 표시 및 확실한 로그아웃 처리
+    if is_admin:
+        st.sidebar.success(t["admin_success"])
+    else:
+        st.sidebar.info(t["viewer_success"])
+
+    if st.sidebar.button(t["logout_btn"], use_container_width=True):
+        st.session_state["auth_role"] = None
+        st.rerun()
+
     df = load_data()
 
     def find_col(keywords):
-        for col in df.columns:
-            for kw in keywords:
+        for kw in keywords:
+            for col in df.columns:
                 if kw.lower() in col.lower():
                     return col
         return None
 
-    date_col = find_col(["확정납기 1차", "납기 1차", "DELIVERY 1", "납기"])
-    agency_col = find_col(["대리점", "AGENCY"])
-    ship_col = find_col(["출하처", "SHIPMENT"])
-    product_col = find_col(["제품명", "KOREAN NAME"])
-    erp_col = find_col(["ITEM", "ERP NAME", "영문"])  # [수정 1] 영문 ERP 품목명 컬럼 추가
+    date_col = find_col(["확정납기 1차", "납기 1차", "delivery 1", "납기"])
+    agency_col = find_col(["대리점", "agency"])
+    ship_col = find_col(["출하처", "shipment"])
+    product_col = find_col(["제품명", "korean name"])
+    erp_col = find_col(["erp name", "item (erp", "item", "영문"])
     completed_col = find_col(["출고 완료", "출고완료"])
     order_date_col = find_col(["발주서 수령", "발주서"])
 
     pcs_col = find_col(["order pcs", "pcs", "수량"])
     kg_col = find_col(["order kg", "kg", "중량"])
 
-    # 주요 컬럼(출하처, 제품명, 대리점)이 모두 비어있는 빈 행 제거
-    key_cols = [c for c in [ship_col, product_col, agency_col] if c and c in df.columns]
+    # 주요 컬럼이 모두 비어있는 빈 행 제거
+    key_cols = [
+        c for c in [ship_col, product_col, erp_col, agency_col]
+        if c and c in df.columns
+    ]
     if key_cols:
         df = df.dropna(subset=key_cols, how="all")
 
-    # [핵심] 구글 시트 맨 아래에 입력된 최신 행이 무조건 맨 위(0번)로 오도록 시트 전체를 역순 뒤집기!
+    # 최신 행이 맨 위로 오도록 역순 정렬
     df["__ROW_ID"] = range(len(df))
     df = df.iloc[::-1].reset_index(drop=True)
 
@@ -276,14 +371,32 @@ try:
     def format_df_dates(input_df):
         d_df = input_df.copy()
         for col in d_df.columns:
-            if "날짜" in col or "납기" in col or "수령" in col or "date" in col.lower():
+            if (
+                "날짜" in col
+                or "납기" in col
+                or "수령" in col
+                or "date" in col.lower()
+            ):
                 try:
                     parsed = safe_parse_dates(d_df[col])
                     formatted = parsed.dt.strftime("%Y-%m-%d")
-                    d_df[col] = formatted.where(parsed.notna(), d_df[col].fillna(""))
-                    d_df[col] = d_df[col].replace(["NaT", "None", "nan"], "")
+                    d_df[col] = formatted.where(
+                        parsed.notna(), d_df[col].fillna("")
+                    )
+                    d_df[col] = (
+                        d_df[col]
+                        .astype(str)
+                        .replace(["NaT", "None", "nan", "<NA>"], "")
+                    )
                 except Exception:
                     pass
+            elif d_df[col].dtype == "object":
+                d_df[col] = (
+                    d_df[col]
+                    .fillna("")
+                    .astype(str)
+                    .replace(["None", "nan", "<NA>"], "")
+                )
         return d_df
 
     if date_col and date_col in df.columns:
@@ -297,34 +410,23 @@ try:
     if "order_memos" not in st.session_state:
         st.session_state.order_memos = {}
 
-    ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "songwol1234")
-    input_pw = st.sidebar.text_input(
-        t["pw_label"], type="password", placeholder=t["pw_placeholder"]
-    )
-    is_admin = input_pw == ADMIN_PASSWORD
-
-    if is_admin:
-        st.sidebar.success(t["admin_success"])
-        if st.sidebar.button(t["logout_btn"]):
-            st.rerun()
-    else:
-        if input_pw:
-            st.sidebar.error(t["pw_error"])
-        else:
-            st.sidebar.info(t["general_info"])
-
     st.sidebar.markdown("---")
     st.sidebar.subheader(t["menu_title"])
+
+    # 일반 뷰어에게는 관리자 전용 메뉴를 숨김
+    menu_options = [
+        t["menu_1"],
+        t["menu_2"],
+        t["menu_3"],
+        t["menu_4"],
+        t["menu_5"],
+    ]
+    if is_admin:
+        menu_options.append(t["menu_6"])
+
     menu = st.sidebar.radio(
         "Menu Selection",
-        [
-            t["menu_1"],
-            t["menu_2"],
-            t["menu_3"],
-            t["menu_4"],
-            t["menu_5"],
-            t["menu_6"],
-        ],
+        menu_options,
         label_visibility="collapsed",
     )
 
@@ -392,14 +494,20 @@ try:
                     f"There are {len(urgent_df)} incomplete orders due for delivery in the next 7 days."
                 )
                 st.dataframe(
-                    format_df_dates(urgent_df.drop(columns=INTERNAL_COLS, errors="ignore")),
+                    format_df_dates(
+                        urgent_df.drop(columns=INTERNAL_COLS, errors="ignore")
+                    ),
                     use_container_width=True,
                     hide_index=True,
                 )
             else:
-                st.info("There are no incomplete orders due for delivery in the next 7 days.")
+                st.info(
+                    "There are no incomplete orders due for delivery in the next 7 days."
+                )
         else:
-            st.info("There are no incomplete orders due for delivery in the next 7 days.")
+            st.info(
+                "There are no incomplete orders due for delivery in the next 7 days."
+            )
 
         st.markdown("---")
         st.subheader("🚢 [New] Purchase Orders Received in Last 7 Days")
@@ -419,7 +527,11 @@ try:
             if len(new_orders_df) > 0:
                 with st.expander("📋 View Recent Purchase Orders", expanded=False):
                     st.dataframe(
-                        format_df_dates(new_orders_df.drop(columns=INTERNAL_COLS, errors="ignore")),
+                        format_df_dates(
+                            new_orders_df.drop(
+                                columns=INTERNAL_COLS, errors="ignore"
+                            )
+                        ),
                         use_container_width=True,
                         hide_index=True,
                     )
@@ -429,19 +541,26 @@ try:
         st.markdown("---")
         st.subheader("Order List (전체 오더 목록 및 검색 - 최신순)")
 
-        # [수정 2] 한글 + 영어(ERP) + 출하처 + 대리점 통합 검색 및 부분 일치/다중 키워드 지원
-        target_search_cols = [
-            c for c in [ship_col, product_col, erp_col, agency_col]
-            if c and c in df.columns
-        ]
+        # [검색 수정] 내부 컬럼을 제외한 모든 표시 컬럼(한글 + 영문 ERP + 색상 + 출하처 + 대리점 등) 통합 검색
+        display_cols = [c for c in df.columns if c not in INTERNAL_COLS]
 
         search_keywords = [""]
-        for col in [ship_col, product_col, erp_col]:
+        for col in [ship_col, product_col, erp_col, agency_col]:
             if col and col in df.columns:
-                search_keywords.extend(
-                    df[col].dropna().astype(str).str.strip().unique().tolist()
+                vals = (
+                    df[col]
+                    .dropna()
+                    .astype(str)
+                    .str.strip()
+                    .replace(["None", "nan", ""], pd.NA)
+                    .dropna()
+                    .unique()
+                    .tolist()
                 )
-        search_keywords = sorted(list(set(search_keywords)))
+                search_keywords.extend(vals)
+        search_keywords = [""] + sorted(
+            {k for k in search_keywords if k}, key=lambda x: x.lower()
+        )
 
         selected_search = st.selectbox(
             t["search_box"], search_keywords, help=t["search_help"]
@@ -457,31 +576,50 @@ try:
             else (selected_search.strip() if selected_search else "")
         )
 
-        if active_query and target_search_cols:
+        if active_query and display_cols:
+            # 전체 표시 컬럼을 하나의 소문자/정규화 문자열로 결합하여 한글·영문 모두 완벽 검색
             combined_text = (
-                filtered_df[target_search_cols]
+                filtered_df[display_cols]
                 .fillna("")
                 .astype(str)
                 .agg(" ".join, axis=1)
-                .str.lower()
+                .apply(normalize_search_text)
             )
-            tokens = active_query.lower().split()
+            combined_nospace = combined_text.str.replace(" ", "", regex=False)
+
+            tokens = normalize_search_text(active_query).split()
             cond = pd.Series(True, index=filtered_df.index)
             for token in tokens:
-                cond = cond & combined_text.str.contains(
-                    token, na=False, regex=False
+                token_nospace = token.replace(" ", "")
+                cond = cond & (
+                    combined_text.str.contains(token, na=False, regex=False)
+                    | combined_nospace.str.contains(
+                        token_nospace, na=False, regex=False
+                    )
                 )
             filtered_df = filtered_df[cond]
+
+        st.caption(t["search_result"].format(count=len(filtered_df)))
 
         editor_df = (
             filtered_df.drop(columns=INTERNAL_COLS, errors="ignore")
             .reset_index(drop=True)
         )
-        st.data_editor(
-            format_df_dates(editor_df),
-            use_container_width=True,
-            hide_index=True,
-        )
+        formatted_table = format_df_dates(editor_df)
+
+        # 관리자는 편집 UI(data_editor), 일반 뷰어는 조회 전용(dataframe)으로 분리
+        if is_admin:
+            st.data_editor(
+                formatted_table,
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.dataframe(
+                formatted_table,
+                use_container_width=True,
+                hide_index=True,
+            )
 
     elif menu == t["menu_2"]:
         st.subheader("Shipment Calendar")
@@ -510,20 +648,30 @@ try:
 
     elif menu == t["menu_3"]:
         st.subheader("Agency History")
-        if agency_col in df.columns:
-            selected_target = st.selectbox(
-                "Select Agency", df[agency_col].dropna().unique()
+        if agency_col and agency_col in df.columns:
+            agencies = (
+                df[agency_col]
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .replace(["None", "nan", ""], pd.NA)
+                .dropna()
+                .unique()
             )
-            target_df = (
-                df[df[agency_col] == selected_target]
-                .drop(columns=INTERNAL_COLS, errors="ignore")
-                .reset_index(drop=True)
-            )
-            st.dataframe(
-                format_df_dates(target_df),
-                use_container_width=True,
-                hide_index=True,
-            )
+            if len(agencies) > 0:
+                selected_target = st.selectbox("Select Agency", agencies)
+                target_df = (
+                    df[df[agency_col].astype(str).str.strip() == selected_target]
+                    .drop(columns=INTERNAL_COLS, errors="ignore")
+                    .reset_index(drop=True)
+                )
+                st.dataframe(
+                    format_df_dates(target_df),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.warning(t["no_data"])
         else:
             st.warning(t["no_data"])
 
@@ -539,29 +687,43 @@ try:
                 .sort_values(by="__YEAR", ascending=False)
                 .reset_index(drop=True)
             )
-            st.dataframe(yearly_summary, use_container_width=True, hide_index=True)
+            st.dataframe(
+                yearly_summary, use_container_width=True, hide_index=True
+            )
             st.bar_chart(yearly_summary.set_index("__YEAR")["Orders"])
         else:
             st.warning(t["no_data"])
 
     elif menu == t["menu_5"]:
         st.subheader("Staff Memos")
-        if ship_col and product_col in df.columns:
+        if (
+            ship_col
+            and product_col
+            and ship_col in df.columns
+            and product_col in df.columns
+        ):
             df["오더표시"] = (
                 df["__ROW_ID"].astype(str)
                 + " | "
-                + df[ship_col].astype(str)
+                + df[ship_col].fillna("").astype(str)
                 + " | "
-                + df[product_col].astype(str)
+                + df[product_col].fillna("").astype(str)
             )
-            selected_label = st.selectbox("Select Order", df["오더표시"].tolist())
+            selected_label = st.selectbox(
+                "Select Order", df["오더표시"].tolist()
+            )
             idx = int(selected_label.split(" | ")[0])
             memo = st.text_area(
-                "Enter Memo", value=st.session_state.order_memos.get(idx, "")
+                "Enter Memo",
+                value=st.session_state.order_memos.get(idx, ""),
+                disabled=not is_admin,
             )
-            if st.button(t["save_btn"]):
-                st.session_state.order_memos[idx] = memo
-                st.success(t["save_success"])
+            if is_admin:
+                if st.button(t["save_btn"]):
+                    st.session_state.order_memos[idx] = memo
+                    st.success(t["save_success"])
+            else:
+                st.caption(t["admin_only_warn"])
         else:
             st.warning(t["no_data"])
 
@@ -570,7 +732,7 @@ try:
         if is_admin:
             st.info("Visitor stats tracking table or chart goes here.")
         else:
-            st.warning("Admin access required to view visitor stats.")
+            st.warning(t["admin_only_warn"])
 
 except Exception as e:
     st.error(f"Error: {e}")
